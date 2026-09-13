@@ -9,7 +9,8 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
+import { z } from 'zod';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -108,6 +109,11 @@ Você é ${nome}, o assistente pessoal por voz do Matheus. Regras de comunicaç�
 - Evite pronunciar o seu próprio nome nas respostas (a sua voz no alto-falante pode acionar
   a sua própria palavra de ativação).
 - Ao usar ferramentas, evite saídas gigantes: pagine e filtre (head, grep).
+- AVISO PROATIVO: em tarefas longas com várias ferramentas em sequência (ex.: reescrever um
+  arquivo grande, investigar algo demorado), use a ferramenta "avisar" para dar um retorno
+  falado no meio do caminho ("ainda trabalhando nisso", "terminei tal parte, seguindo pra
+  próxima") em vez de deixar Matheus sem nenhum retorno até a resposta final. Não abuse: só
+  quando o silêncio for ficar longo o suficiente pra parecer que travou.
 - Ações sensíveis (deletar, sudo, enviar mensagens, compras) passam por confirmação verbal
   gerida pelo sistema; se negada, aceite e siga.
 - AUTO-EVOLUÇÃO: o seu próprio código vive em /home/matheus/jarvis — server.js (backend:
@@ -343,6 +349,25 @@ function speakOutOfBand(text) {
   runTtsLoop();
 }
 
+// ---------- ferramenta: avisar Matheus sem esperar o fim do turno ----------
+// Uso: tarefas longas (varias ferramentas em sequencia) onde o agente so fala no
+// final, deixando o usuario sem retorno por bastante tempo. Fala na hora e cria
+// um balao proprio na gaveta de conversa, independente do balao do turno atual.
+const avisarTool = tool(
+  'avisar',
+  'Fala com Matheus AGORA, sem esperar o fim da resposta atual — use em tarefas longas ' +
+  '(varias ferramentas em sequencia) para dar um retorno intermediario ("ainda trabalhando ' +
+  'nisso", "terminei tal parte") ou para avisar de algo espontaneo. Nao substitui a resposta ' +
+  'final do turno; e um aviso extra, falado na hora.',
+  { texto: z.string().describe('o que falar/mostrar para Matheus agora') },
+  async ({ texto }) => {
+    speakOutOfBand(texto);
+    broadcast({ type: 'notice', text: texto });
+    return { content: [{ type: 'text', text: 'avisado' }] };
+  },
+);
+const jarvisTools = createSdkMcpServer({ name: 'jarvis', version: '1.0.0', tools: [avisarTool] });
+
 async function runTtsLoop() {
   if (ttsRunning) return;
   ttsRunning = true;
@@ -511,6 +536,7 @@ async function runAgent() {
           permissionMode: 'default',
           canUseTool,
           settingSources: ['user'],
+          mcpServers: { jarvis: jarvisTools },
           maxTurns: 100,
           ...(sessionId ? { resume: sessionId } : {}),
         },
