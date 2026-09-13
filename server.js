@@ -37,7 +37,7 @@ const HOME = os.homedir();
 const DEFAULT_PERSONALITY = {
   preset: 'jarvis', nome: 'Jarvis', tratamento: 'senhor',
   humor: 0.6, sarcasmo: 0.3, formalidade: 0.7, prolixidade: 0.3,
-  voz: 'en-AU-WilliamMultilingualNeural',
+  voz: 'eleven:nPczCjzI2devNBz1zQrb',
   velocidade: 1.2,
 };
 
@@ -45,7 +45,7 @@ const PRESETS = {
   jarvis: {
     flavor: 'Personalidade: como o JARVIS do Homem de Ferro — mordomo britânico digital: ' +
       'educado, eficiente, espirituoso na medida, impecável sob pressão.',
-    voz: 'en-AU-WilliamMultilingualNeural', tratamento: 'senhor',
+    voz: 'eleven:nPczCjzI2devNBz1zQrb', tratamento: 'senhor',
     saudacao: 'Às ordens, senhor.',
     humor: 0.6, sarcasmo: 0.3, formalidade: 0.7, prolixidade: 0.3,
   },

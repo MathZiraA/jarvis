@@ -359,6 +359,10 @@
             <option value="eleven:nPczCjzI2devNBz1zQrb">Brian — ElevenLabs grave ★</option>
             <option value="eleven:onwK4e9ZLuTAKqWW03F9">Daniel — ElevenLabs britânico ★</option>
             <option value="eleven:JBFqnCBsd6RMkjVDRZzb">George — ElevenLabs storyteller ★</option>
+            <option value="eleven:pFZP5JQG7iQjIQuC4Bku">Lily — ElevenLabs aveludada ★</option>
+            <option value="eleven:EXAVITQu4vr4xnSDxMaL">Sarah — ElevenLabs confiante ★</option>
+            <option value="eleven:Xb7hH8MSUJpSbSDYk0k2">Alice — ElevenLabs britânica ★</option>
+            <option value="eleven:XrExE9yKIg1WjnnlVkGX">Matilda — ElevenLabs profissional ★</option>
             <option value="eleven:zNEsdgTUa3ndwKry8Xcq">Elvis — ElevenLabs (exige plano pago)</option>
           </select>
         </div>
@@ -430,7 +434,7 @@ let persCfg = { preset: 'jarvis', nome: 'Jarvis', tratamento: 'senhor',
   voz: 'en-AU-WilliamMultilingualNeural', velocidade: 1.2 };
 // defaults locais dos presets (espelho do servidor) para resposta instantânea da UI
 const PRESET_DEFAULTS = {
-  jarvis: { nome: 'Jarvis', tratamento: 'senhor', voz: 'en-AU-WilliamMultilingualNeural', humor: .6, sarcasmo: .3, formalidade: .7, prolixidade: .3 },
+  jarvis: { nome: 'Jarvis', tratamento: 'senhor', voz: 'eleven:nPczCjzI2devNBz1zQrb', humor: .6, sarcasmo: .3, formalidade: .7, prolixidade: .3 },
   friday: { nome: 'Friday', tratamento: 'chefe', voz: 'pt-BR-FranciscaNeural', humor: .7, sarcasmo: .4, formalidade: .2, prolixidade: .3 },
   ultron: { nome: 'Ultron', tratamento: 'humano', voz: 'pt-BR-AntonioNeural', humor: .5, sarcasmo: .9, formalidade: .5, prolixidade: .4 },
   neutro: { nome: 'Jarvis', tratamento: '', voz: 'pt-BR-AntonioNeural', humor: .1, sarcasmo: 0, formalidade: .5, prolixidade: .2 },
@@ -837,7 +841,9 @@ function applyPersonality(cfg, voice) {
   WAKE = buildWake(persCfg.nome);
   const v = voice || persCfg.voz || '';
   const ELEVEN_NAMES = { zNEsdgTUa3ndwKry8Xcq: 'Elvis', nPczCjzI2devNBz1zQrb: 'Brian',
-    onwK4e9ZLuTAKqWW03F9: 'Daniel', JBFqnCBsd6RMkjVDRZzb: 'George' };
+    onwK4e9ZLuTAKqWW03F9: 'Daniel', JBFqnCBsd6RMkjVDRZzb: 'George',
+    pFZP5JQG7iQjIQuC4Bku: 'Lily', EXAVITQu4vr4xnSDxMaL: 'Sarah',
+    Xb7hH8MSUJpSbSDYk0k2: 'Alice', XrExE9yKIg1WjnnlVkGX: 'Matilda' };
   $('sb-voice').textContent = v.startsWith('eleven:')
     ? (ELEVEN_NAMES[v.slice(7)] || 'ElevenLabs') + ' · ElevenLabs'
     : v.replace(/^[a-z]{2}-[A-Z]{2}-/, '').replace(/(Multilingual)?Neural/, '') + ' · pt-BR';
