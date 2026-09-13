@@ -129,8 +129,10 @@ Você é ${nome}, o assistente pessoal por voz do Matheus. Regras de comunicaç�
   forma significativa, ainda pergunte antes de sair implementando. Ao mexer em você mesmo,
   peça ou espontâneo, siga À RISCA este protocolo:
   1. Leia o trecho relevante antes de mexer; mudanças mínimas e cirúrgicas.
-  2. Depois de editar server.js: rode "node --check /home/matheus/jarvis/server.js".
-     Se falhar, desfaça (git checkout -- server.js) e diga o que houve.
+  2. Depois de editar server.js, lib/ ou public/wake.js: rode
+     "cd /home/matheus/jarvis && node --check server.js && npm test".
+     Se falhar, desfaça (git checkout -- <arquivo>) e diga o que houve. Ao criar
+     comportamento novo testável, adicione um caso em tests/test.mjs.
   3. Commite SEMPRE: cd /home/matheus/jarvis && git add -A && git commit -m "descrição curta".
   4. Mudou server.js? Avise em voz que vai reiniciar e rode:
      (sleep 4 && systemctl --user restart jarvis) & disown
@@ -689,7 +691,7 @@ async function processUserText(text) {
 const bootTime = Date.now();
 let bootGreeted = false;
 
-wss.on('connection', (ws) => {
+function onWsConnection(ws) {
   clients.add(ws);
   ws.isAlive = true;
   if (!bootGreeted && Date.now() - bootTime < 120000) {
@@ -761,7 +763,8 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => clients.delete(ws));
-});
+}
+wss.on('connection', onWsConnection);
 
 // heartbeat (padrão do demo oficial)
 setInterval(() => {
@@ -789,3 +792,39 @@ try {
     reloadTimer = setTimeout(() => broadcast({ type: 'reload' }), 800);
   });
 } catch (e) { console.error('watch do public/ falhou:', e.message); }
+
+// ---------- acesso pela LAN (celular) ----------
+// HTTPS com certificado autoassinado (mic exige origem segura) + token no ?t=
+import('https').then(({ default: https }) => {
+  const CRT = path.join(__dirname, 'certs', 'jarvis.crt');
+  const KEY = path.join(__dirname, 'certs', 'jarvis.key');
+  const TOKEN = process.env.JARVIS_LAN_TOKEN;
+  if (!TOKEN || !fs.existsSync(CRT)) return;
+
+  const hasToken = (req) => {
+    try {
+      const u = new URL(req.url, 'https://x');
+      if (u.searchParams.get('t') === TOKEN) return true;
+    } catch {}
+    return (req.headers.cookie || '').includes('jarvis_t=' + TOKEN);
+  };
+
+  const lanApp = express();
+  lanApp.use((req, res, next) => {
+    if (!hasToken(req)) { res.status(403).send('JARVIS: token inválido'); return; }
+    res.setHeader('Set-Cookie', `jarvis_t=${TOKEN}; Path=/; Max-Age=31536000; Secure; SameSite=Strict`);
+    next();
+  });
+  lanApp.use(express.static(path.join(__dirname, 'public')));
+
+  const httpsServer = https.createServer(
+    { cert: fs.readFileSync(CRT), key: fs.readFileSync(KEY) }, lanApp);
+  const wssLan = new WebSocketServer({
+    server: httpsServer, path: '/ws',
+    verifyClient: (info) => hasToken(info.req),
+  });
+  wssLan.on('connection', onWsConnection);
+  httpsServer.listen(3443, '0.0.0.0', () => {
+    console.log('JARVIS na LAN: https://<ip-desta-máquina>:3443/?t=<token do .env>');
+  });
+});

@@ -53,6 +53,29 @@ volta falada (Edge TTS, voz Antônio). Plano completo e decisões: `design/JARVI
   reconhecimento a cada 5s se cair. Voz padrão: William multilíngue a 120% de velocidade
   (slider "Velocidade da fala" no painel).
 
+## Lote de melhorias (13/09 — noite)
+
+- **Fast lane**: hora/data/saudações/obrigado respondidos pelo servidor em ~10ms, sem gastar
+  cota (lib/core.mjs `fastLaneReply`).
+- **Emoção na voz** (ElevenLabs): erro soa sóbrio, boa notícia soa animada (`moodSettings`).
+- **Medidor de consumo** na statusbar: % dos créditos ElevenLabs do mês + turnos do dia.
+- **Modo ditado**: "Jarvis, anota aí" → transcreve tudo sem interpretar até "terminei";
+  salva em ~/Documentos/notas/. "Cancela o ditado" descarta.
+- **Modo mini**: chip ▭ na titlebar compacta a janela (estado no localStorage).
+- **Barge-in por voz**: detector de energia com piso adaptativo + AEC — falar por cima do
+  Jarvis por ~400ms o interrompe sem wake word (initVoiceDetector no index.html).
+- **Celular na LAN**: https://IP-do-PC:3443/?t=TOKEN (token em .env JARVIS_LAN_TOKEN; cert
+  autoassinado em certs/, aceitar o aviso do navegador uma vez; firewall já liberava >1024).
+- **npm test**: 12 testes (chunker, sanitize, travas, fast lane, wake/fuzzy). Funções puras
+  extraídas para lib/core.mjs e public/wake.js. A suíte já pegou um furo real: SENSITIVE_TOOL
+  usava \b que não casa após "_" — envio de e-mail não estava sendo gateado.
+- **Drive** habilitado no workspace-mcp (primeiro uso pedirá re-autorização Google com o
+  escopo novo — o Jarvis mostra o link).
+- **Notion**: rodar `bin/add-notion.sh` com um token de integração interna.
+- **Pendentes (dependem de conta/vontade)**: wake word offline Porcupine (precisa AccessKey
+  grátis do console Picovoice; a stack atual com alternativas+fuzzy cobre bem), WhatsApp
+  (servidores MCP da comunidade ainda instáveis; reavaliar).
+
 ## Operação
 
 - Servidor: `systemctl --user {status,restart,stop} jarvis` · logs: `journalctl --user -u jarvis -f`

@@ -561,7 +561,7 @@ function handleFinal(text, alts = []) {
 
 // ---------- WebSocket ----------
 function connect() {
-  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
   ws.onopen = () => {
     wsOk = true;
     $('chip-online').textContent = '● ONLINE';
@@ -1025,6 +1025,44 @@ $('textin').addEventListener('keydown', (e) => {
   }
 });
 
+// ---------- barge-in por voz (detector de fala leve) ----------
+// Enquanto o Jarvis fala, um analisador de energia (com cancelamento de eco e
+// piso de ruído adaptativo) detecta se VOCÊ começou a falar por cima — e ele
+// se cala na hora, sem precisar da wake word.
+let vadStream = null;
+async function initVoiceDetector() {
+  if (vadStream || !navigator.mediaDevices) return;
+  try {
+    vadStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    const ctx = audioCtx();
+    const src = ctx.createMediaStreamSource(vadStream);
+    const an = ctx.createAnalyser();
+    an.fftSize = 512;
+    src.connect(an);
+    const buf = new Float32Array(an.fftSize);
+    let noise = 0.008, voiced = 0;
+    setInterval(() => {
+      if (!audioPlaying()) { voiced = 0; return; } // só interessa por cima da fala dele
+      an.getFloatTimeDomainData(buf);
+      let rms = 0;
+      for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+      rms = Math.sqrt(rms / buf.length);
+      noise = Math.max(0.003, noise * 0.995 + rms * 0.005); // piso adaptativo
+      if (rms > Math.max(0.02, noise * 3.5)) voiced++;
+      else voiced = Math.max(0, voiced - 1);
+      if (voiced >= 4) { // ~400ms de fala sustentada
+        voiced = 0;
+        stopAllAudio();
+        send({ type: 'cancel' });
+        idleOrListen();
+        $('interim').textContent = '👂 pode falar…';
+      }
+    }, 100);
+  } catch (e) { console.error('detector de voz indisponível:', e.message); }
+}
+
 // modo mini: janela compacta (o tamanho da janela em si você ajusta uma vez;
 // o GNOME lembra na próxima abertura)
 $('chip-mini').onclick = () => {
@@ -1038,7 +1076,7 @@ setState('idle');
 setLogOpen((localStorage.getItem('jarvis_log_open') ?? '0') === '1');
 
 // standby automático ao abrir (a permissão do mic fica salva no perfil do app)
-if (SR) { micOn = true; updateMicUi(); }
+if (SR) { micOn = true; updateMicUi(); initVoiceDetector(); }
 
 // desbloqueio de áudio: o Chrome exige um gesto antes de permitir som
 if (audioCtx().state === 'suspended') {
