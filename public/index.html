@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S.</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='none' stroke='%2335e0ff' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%2335e0ff' stroke-width='2' stroke-dasharray='6 4'/%3E%3Ccircle cx='32' cy='32' r='9' fill='%2335e0ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Rajdhani:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --ground:#05080f;
+    --window:#0a1220;
+    --panel:#0e1a2b;
+    --edge:#1c3049;
+    --arc:#35e0ff;
+    --arc-dim:#1a8fb0;
+    --gold:#ffb84d;
+    --text:#d7e9f4;
+    --muted:#6f8ba3;
+    --user:#16283f;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--ground); color:var(--text);
+    font-family:'Rajdhani',system-ui,sans-serif; font-size:16px; line-height:1.5;
+    display:flex; flex-direction:column;
+  }
+
+  /* ---------- titlebar ---------- */
+  .titlebar{
+    display:flex;align-items:center;gap:10px;padding:10px 16px;
+    border-bottom:1px solid var(--edge);background:rgba(5,8,15,.5);flex-shrink:0;
+  }
+  .dots{display:flex;gap:6px}
+  .dots i{width:10px;height:10px;border-radius:50%;background:#22354d;display:block}
+  .titlebar .name{font-family:'Michroma',sans-serif;font-size:11px;letter-spacing:.34em;margin-left:6px}
+  .chip{
+    font-size:11px;letter-spacing:.14em;padding:2px 10px;border-radius:999px;
+    border:1px solid var(--edge);color:var(--muted);cursor:default;user-select:none;
+  }
+  .chip.on{color:var(--arc);border-color:rgba(53,224,255,.35)}
+  .chip.warn{color:var(--gold);border-color:rgba(255,184,77,.35)}
+  .chip.click{cursor:pointer}
+  .titlebar .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+  /* ---------- stage ---------- */
+  .stage{display:grid;grid-template-columns:1.1fr 1fr;flex:1;min-height:0}
+  @media (max-width:720px){.stage{grid-template-columns:1fr}}
+
+  .reactor-zone{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:22px;padding:36px 20px;
+    background:radial-gradient(circle at 50% 45%, rgba(53,224,255,.07), transparent 60%);
+  }
+  .reactor{position:relative;width:190px;height:190px;cursor:pointer}
+  .reactor .ring{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(53,224,255,.35);transition:opacity .4s}
+  .reactor .ring.r2{inset:20px;border-style:dashed;animation:spin 14s linear infinite}
+  .reactor .ring.r3{inset:40px;border-color:rgba(53,224,255,.6);animation:spin 9s linear infinite reverse}
+  .reactor .core{
+    position:absolute;inset:62px;border-radius:50%;
+    background:radial-gradient(circle, #d9fbff 0%, var(--arc) 45%, rgba(53,224,255,.15) 100%);
+    box-shadow:0 0 34px rgba(53,224,255,.75), 0 0 90px rgba(53,224,255,.3);
+    animation:pulse 2.6s ease-in-out infinite;
+    transition:opacity .4s;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes pulse{50%{box-shadow:0 0 20px rgba(53,224,255,.5),0 0 60px rgba(53,224,255,.2)}}
+  @keyframes pulsefast{50%{box-shadow:0 0 16px rgba(53,224,255,.4),0 0 40px rgba(53,224,255,.15)}}
+
+  /* estados */
+  body[data-state="idle"] .reactor .core{opacity:.35;box-shadow:none;animation:none}
+  body[data-state="idle"] .reactor .ring{opacity:.4}
+  body[data-state="idle"] .reactor .ring.r2, body[data-state="idle"] .reactor .ring.r3{animation-play-state:paused}
+  body[data-state="listening"] .reactor .core{animation:pulsefast 1.2s ease-in-out infinite}
+  body[data-state="thinking"] .reactor .ring.r2{animation-duration:3.5s}
+  body[data-state="thinking"] .reactor .ring.r3{animation-duration:2s}
+  body[data-state="speaking"] .reactor .core,
+  body[data-state="confirming"] .reactor .core{
+    background:radial-gradient(circle, #fff3dd 0%, var(--gold) 45%, rgba(255,184,77,.15) 100%);
+    box-shadow:0 0 34px rgba(255,184,77,.75), 0 0 90px rgba(255,184,77,.3);
+    animation:pulsegold 1s ease-in-out infinite;
+  }
+  @keyframes pulsegold{50%{box-shadow:0 0 18px rgba(255,184,77,.5),0 0 50px rgba(255,184,77,.2)}}
+
+  .state{font-family:'Michroma',sans-serif;font-size:12px;letter-spacing:.3em;color:var(--arc);text-align:center;min-height:16px}
+  body[data-state="speaking"] .state, body[data-state="confirming"] .state{color:var(--gold)}
+
+  .wave{display:flex;gap:4px;align-items:flex-end;height:26px;opacity:0;transition:opacity .3s}
+  body[data-state="listening"] .wave, body[data-state="speaking"] .wave{opacity:1}
+  .wave i{width:4px;background:var(--arc-dim);border-radius:2px;animation:wv 1.1s ease-in-out infinite}
+  body[data-state="speaking"] .wave i{background:var(--gold)}
+  .wave i:nth-child(1){height:8px}.wave i:nth-child(2){height:18px;animation-delay:.1s}
+  .wave i:nth-child(3){height:26px;animation-delay:.2s}.wave i:nth-child(4){height:14px;animation-delay:.3s}
+  .wave i:nth-child(5){height:22px;animation-delay:.4s}.wave i:nth-child(6){height:10px;animation-delay:.5s}
+  @keyframes wv{50%{transform:scaleY(.45)}}
+
+  .interim{font-size:14px;color:var(--muted);font-style:italic;min-height:20px;max-width:80%;text-align:center}
+
+  @media (prefers-reduced-motion:reduce){
+    .reactor .ring,.reactor .core,.wave i{animation:none !important}
+  }
+
+  /* ---------- log ---------- */
+  .log{
+    border-left:1px solid var(--edge);padding:22px;display:flex;flex-direction:column;gap:12px;
+    overflow-y:auto;min-height:0;
+  }
+  @media (max-width:720px){.log{border-left:0;border-top:1px solid var(--edge)}}
+  .msgs{display:flex;flex-direction:column;gap:12px;flex:1;overflow-y:auto;padding-right:4px}
+  .msg{max-width:90%;padding:10px 14px;border-radius:10px;font-size:15px;white-space:pre-wrap;word-break:break-word}
+  .msg .who{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:2px}
+  .msg.user{background:var(--user);align-self:flex-end;border:1px solid #24405f}
+  .msg.jarvis{background:var(--panel);border:1px solid var(--edge)}
+  .msg.jarvis .who{color:var(--arc-dim)}
+  .toolline{
+    font-size:12px;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;
+    display:flex;align-items:center;gap:8px;min-height:18px;
+  }
+  .toolline:empty{display:none}
+  .toolline::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);flex-shrink:0}
+  .confirmbox{
+    border:1px solid rgba(255,184,77,.5);border-radius:10px;padding:12px 14px;background:rgba(255,184,77,.06);
+    display:flex;flex-direction:column;gap:10px;font-size:14px;
+  }
+  .confirmbox .btns{display:flex;gap:8px}
+  .confirmbox button{
+    font-family:inherit;font-size:14px;font-weight:600;letter-spacing:.06em;padding:6px 18px;
+    border-radius:999px;border:1px solid var(--edge);background:var(--panel);color:var(--text);cursor:pointer;
+  }
+  .confirmbox button.yes{background:var(--gold);border-color:var(--gold);color:#2b1c00}
+  .inputbar{
+    margin-top:12px;display:flex;gap:8px;border:1px solid var(--edge);border-radius:10px;
+    padding:6px 8px 6px 14px;align-items:center;flex-shrink:0;
+  }
+  .inputbar input{
+    flex:1;background:none;border:0;outline:0;color:var(--text);
+    font-family:inherit;font-size:15px;
+  }
+  .inputbar input::placeholder{color:var(--muted)}
+  .micbtn{
+    background:none;border:0;cursor:pointer;font-size:19px;padding:6px 10px;border-radius:8px;
+    color:var(--arc);transition:background .2s;
+  }
+  .micbtn:hover{background:rgba(53,224,255,.1)}
+  .micbtn.off{color:var(--muted);filter:grayscale(1)}
+
+  /* ---------- statusbar ---------- */
+  .statusbar{
+    display:flex;gap:18px;flex-wrap:wrap;padding:9px 18px;border-top:1px solid var(--edge);
+    font-size:12px;letter-spacing:.1em;color:var(--muted);background:rgba(5,8,15,.5);flex-shrink:0;
+  }
+  .statusbar b{color:var(--arc-dim);font-weight:600}
+
+  /* ---------- painel de personalidade ---------- */
+  .overlay{
+    position:fixed;inset:0;background:rgba(5,8,15,.72);z-index:20;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .overlay[hidden]{display:none !important}
+  .settings-win{
+    background:var(--window);border:1px solid var(--edge);border-radius:14px;
+    box-shadow:0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(53,224,255,.05);
+    width:min(680px,100%);max-height:92vh;overflow-y:auto;
+  }
+  .settings-win .head{
+    display:flex;align-items:center;gap:10px;padding:12px 18px;
+    border-bottom:1px solid var(--edge);background:rgba(5,8,15,.5);
+    position:sticky;top:0;
+  }
+  .settings-win .head .name{font-family:'Michroma',sans-serif;font-size:11px;letter-spacing:.3em}
+  .settings-win .head .close{
+    margin-left:auto;cursor:pointer;color:var(--muted);font-size:18px;background:none;border:0;
+    padding:2px 8px;border-radius:6px;
+  }
+  .settings-win .head .close:hover{color:var(--text);background:rgba(53,224,255,.08)}
+  .settings{padding:22px;display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  @media (max-width:640px){.settings{grid-template-columns:1fr}}
+  .field label{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:8px}
+  .presets{display:flex;gap:8px;flex-wrap:wrap}
+  .preset{
+    padding:7px 16px;border-radius:999px;border:1px solid var(--edge);font-size:14px;
+    font-weight:600;letter-spacing:.06em;color:var(--muted);cursor:pointer;background:none;
+    font-family:inherit;
+  }
+  .preset.on{color:#04222c;background:var(--arc);border-color:var(--arc);box-shadow:0 0 16px rgba(53,224,255,.4)}
+  .slider{margin-bottom:14px}
+  .slider .row{display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px}
+  .slider .val{font-variant-numeric:tabular-nums;color:var(--arc-dim);font-weight:600}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:5px;border-radius:3px;
+    background:linear-gradient(90deg,var(--arc-dim),var(--arc)) 0/var(--fill,50%) 100% no-repeat, var(--edge);
+    outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#d9fbff;
+    box-shadow:0 0 10px rgba(53,224,255,.7);cursor:pointer;border:0;
+  }
+  .textbox,select.textbox{
+    width:100%;border:1px solid var(--edge);border-radius:8px;padding:9px 14px;font-size:15px;
+    color:var(--text);background:var(--panel);font-family:inherit;outline:none;
+  }
+  .textbox:focus{border-color:rgba(53,224,255,.4)}
+  .tg{display:flex;justify-content:space-between;align-items:center;font-size:15px;margin-top:4px}
+  .sw{width:38px;height:20px;border-radius:999px;background:var(--edge);position:relative;flex-shrink:0;cursor:pointer;transition:background .2s}
+  .sw::after{content:"";position:absolute;top:3px;left:4px;width:14px;height:14px;border-radius:50%;background:var(--muted);transition:all .2s}
+  .sw.on{background:rgba(53,224,255,.25)}
+  .sw.on::after{left:auto;right:4px;background:var(--arc);box-shadow:0 0 8px rgba(53,224,255,.7)}
+
+  #unlock{
+    position:fixed;left:50%;bottom:64px;transform:translateX(-50%);
+    background:rgba(255,184,77,.12);border:1px solid rgba(255,184,77,.5);color:var(--gold);
+    padding:8px 20px;border-radius:999px;font-size:13px;letter-spacing:.08em;z-index:10;
+    box-shadow:0 0 18px rgba(255,184,77,.25);cursor:pointer;
+  }
+</style>
+</head>
+<body data-state="idle">
+
+<div class="titlebar">
+  <div class="dots"><i></i><i></i><i></i></div>
+  <span class="name">J.A.R.V.I.S.</span>
+  <span class="chip" id="chip-online">● OFFLINE</span>
+  <div class="right">
+    <span class="chip click" id="chip-mic" title="ligar/desligar microfone">🎙 mic desligado</span>
+    <span class="chip" title="configurações — Fase 3">⚙</span>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="reactor-zone">
+    <div class="reactor" id="reactor" title="clique: falar / interromper">
+      <div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div>
+      <div class="core"></div>
+    </div>
+    <span class="state" id="state-label">STANDBY</span>
+    <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="interim" id="interim"></div>
+  </div>
+  <div class="log">
+    <div class="msgs" id="msgs"></div>
+    <div class="toolline" id="toolline"></div>
+    <div class="inputbar">
+      <input id="textin" type="text" placeholder="ou digite um comando…" autocomplete="off">
+      <button class="micbtn off" id="micbtn" title="ligar/desligar microfone">🎙</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="settings" hidden>
+  <div class="settings-win">
+    <div class="head">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <span class="name">CONFIGURAÇÕES</span>
+      <span class="chip">personalidade</span>
+      <button class="close" id="settings-close" title="fechar">✕</button>
+    </div>
+    <div class="settings">
+      <div>
+        <div class="field" style="margin-bottom:20px">
+          <label>Preset</label>
+          <div class="presets" id="presets">
+            <button class="preset" data-preset="jarvis">JARVIS</button>
+            <button class="preset" data-preset="friday">FRIDAY</button>
+            <button class="preset" data-preset="ultron">ULTRON</button>
+            <button class="preset" data-preset="neutro">Neutro</button>
+          </div>
+        </div>
+        <div class="slider"><div class="row"><span>Humor</span><span class="val" id="v-humor">—</span></div>
+          <input type="range" id="s-humor" min="0" max="100" step="5"></div>
+        <div class="slider"><div class="row"><span>Sarcasmo</span><span class="val" id="v-sarcasmo">—</span></div>
+          <input type="range" id="s-sarcasmo" min="0" max="100" step="5"></div>
+        <div class="slider"><div class="row"><span>Formalidade</span><span class="val" id="v-formalidade">—</span></div>
+          <input type="range" id="s-formalidade" min="0" max="100" step="5"></div>
+        <div class="slider"><div class="row"><span>Prolixidade</span><span class="val" id="v-prolixidade">—</span></div>
+          <input type="range" id="s-prolixidade" min="0" max="100" step="5"></div>
+        <div class="slider"><div class="row"><span>Velocidade da fala</span><span class="val" id="v-velocidade">—</span></div>
+          <input type="range" id="s-velocidade" min="80" max="150" step="5"></div>
+      </div>
+      <div>
+        <div class="field" style="margin-bottom:16px">
+          <label>Nome do assistente (muda a wake word)</label>
+          <input class="textbox" id="f-nome" maxlength="30">
+        </div>
+        <div class="field" style="margin-bottom:16px">
+          <label>Tratamento</label>
+          <input class="textbox" id="f-tratamento" maxlength="30" placeholder="senhor, chefe…">
+        </div>
+        <div class="field" style="margin-bottom:16px">
+          <label>Voz</label>
+          <select class="textbox" id="f-voz">
+            <option value="pt-BR-AntonioNeural">Antônio — pt-BR neural</option>
+            <option value="pt-BR-FranciscaNeural">Francisca — pt-BR neural</option>
+            <option value="pt-BR-ThalitaMultilingualNeural">Thalita — pt-BR multilíngue</option>
+            <option value="en-US-AndrewMultilingualNeural">Andrew — grave, estilo Jarvis</option>
+            <option value="en-US-BrianMultilingualNeural">Brian — polido, estilo Jarvis</option>
+            <option value="en-AU-WilliamMultilingualNeural">William — britânico, estilo Jarvis</option>
+            <option value="eleven:zNEsdgTUa3ndwKry8Xcq">Elvis — ElevenLabs premium ★</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Comportamento</label>
+          <div class="tg"><span>Sons de ativação</span><span class="sw" id="t-sons"></span></div>
+          <div class="tg"><span>Confirmação verbal p/ ações sensíveis</span><span class="sw on" style="opacity:.5;cursor:default" title="sempre ativa — trava de segurança"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span>wake word: <b>"Jarvis"</b></span>
+  <span>voz: <b id="sb-voice">—</b></span>
+  <span>workspace: <b id="sb-ws">—</b></span>
+  <span>sessão: <b id="sb-session">—</b></span>
+  <span id="sb-metrics"></span>
+</div>
+
+<script>
+'use strict';
+
+// ---------- estado global ----------
+const $ = (id) => document.getElementById(id);
+let ws = null;
+let wsOk = false;
+let micOn = false;
+let state = 'idle';          // idle | listening | thinking | speaking | confirming
+let clientTurn = 0;          // turno atual (vem do servidor via user_echo)
+let confirmBox = null;
+
+// ping sutil de "processando" (respeita o toggle de sons)
+let thinkTimer = null;
+function startThinkSound() {
+  if (!sonsOn || thinkTimer) return;
+  thinkTimer = setInterval(() => {
+    try {
+      const ctx = audioCtx();
+      if (ctx.state !== 'running') return;
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 660;
+      g.gain.setValueAtTime(0.02, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+      o.connect(g).connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime + 0.3);
+    } catch {}
+  }, 2200);
+}
+function stopThinkSound() { clearInterval(thinkTimer); thinkTimer = null; }
+
+function setState(s) {
+  state = s;
+  if (s === 'thinking') startThinkSound(); else stopThinkSound();
+  document.body.dataset.state = (s === 'confirming') ? 'confirming' : s;
+  $('state-label').textContent = {
+    idle: micOn ? `STANDBY · DIGA "${(persCfg.nome || 'JARVIS').toUpperCase()}"` : 'MIC DESLIGADO',
+    listening: 'OUVINDO',
+    thinking: 'PROCESSANDO…',
+    speaking: 'FALANDO',
+    confirming: 'AGUARDANDO CONFIRMAÇÃO',
+  }[s] || s.toUpperCase();
+}
+
+// ---------- personalidade (Fase 3) ----------
+let persCfg = { preset: 'jarvis', nome: 'Jarvis', tratamento: 'senhor',
+  humor: .6, sarcasmo: .3, formalidade: .7, prolixidade: .3,
+  voz: 'en-AU-WilliamMultilingualNeural', velocidade: 1.2 };
+// defaults locais dos presets (espelho do servidor) para resposta instantânea da UI
+const PRESET_DEFAULTS = {
+  jarvis: { nome: 'Jarvis', tratamento: 'senhor', voz: 'en-AU-WilliamMultilingualNeural', humor: .6, sarcasmo: .3, formalidade: .7, prolixidade: .3 },
+  friday: { nome: 'Friday', tratamento: 'chefe', voz: 'pt-BR-FranciscaNeural', humor: .7, sarcasmo: .4, formalidade: .2, prolixidade: .3 },
+  ultron: { nome: 'Ultron', tratamento: 'humano', voz: 'pt-BR-AntonioNeural', humor: .5, sarcasmo: .9, formalidade: .5, prolixidade: .4 },
+  neutro: { nome: 'Jarvis', tratamento: '', voz: 'pt-BR-AntonioNeural', humor: .1, sarcasmo: 0, formalidade: .5, prolixidade: .2 },
+};
+let sonsOn = (localStorage.getItem('jarvis_sons') ?? '1') === '1';
+
+// ---------- wake word (Fase 2) ----------
+const WAKE_VARIANTS = {
+  jarvis: ['jarvis', 'djarvis', 'jarves', 'jarbis', 'járvis', 'jarvys'],
+  friday: ['friday', 'fraidei', 'fraide', 'frida', 'fridei'],
+  ultron: ['ultron', 'últron', 'utron', 'ultrom'],
+};
+let WAKE = buildWake('Jarvis');
+function buildWake(nome) {
+  const n = (nome || 'Jarvis').toLowerCase();
+  const vs = WAKE_VARIANTS[n] || [n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')];
+  return new RegExp(`\\b(${vs.join('|')})\\b`, 'i');
+}
+const CONV_MS = 90000;  // janela de conversa: classificador decide sem wake word
+const HOT_MS = 10000;   // logo após a resposta: aceita direto, sem classificar
+let awakeUntil = 0;
+let hotUntil = 0;
+let awakeTimer = null;
+function isAwake() { return Date.now() < awakeUntil; }
+function wake(ms = CONV_MS) {
+  awakeUntil = Date.now() + ms;
+  if (state === 'idle') setState('listening');
+  clearTimeout(awakeTimer);
+  awakeTimer = setTimeout(() => {
+    if (!isAwake() && state === 'listening' && !audioPlaying()) setState('idle');
+  }, ms + 60);
+}
+function sleepAgain() { awakeUntil = 0; clearTimeout(awakeTimer); }
+
+// blip de ativação (gerado por síntese — sem asset)
+function blip() {
+  if (!sonsOn) return;
+  try {
+    const ctx = audioCtx();
+    if (ctx.state !== 'running') return;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(880, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(1560, ctx.currentTime + 0.12);
+    g.gain.setValueAtTime(0.12, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+    o.connect(g).connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.24);
+  } catch {}
+}
+
+// decide o destino de cada frase final transcrita
+function handleFinal(text) {
+  const m = text.match(WAKE);
+  // enquanto o Jarvis fala, só wake word interessa (proteção contra eco residual)
+  if (!m && audioPlaying()) return;
+  if (m) {
+    const after = text.slice(m.index + m[0].length).replace(/^[\s,.!?…]+/, '').trim();
+    blip();
+    // comandos de corte: não viram turno do agente, cancelam na hora
+    if (/^(cancela|para|pare|espera|sil[êe]ncio|cala|esquece|deixa)\b/i.test(after)) {
+      stopAllAudio();
+      send({ type: 'cancel' });
+      wake(); setState('listening');
+      return;
+    }
+    if (after.length >= 2) submitText(after);
+    else { stopAllAudio(); if (state === 'thinking' || audioPlaying()) send({ type: 'cancel' }); wake(); }
+  } else if (state === 'confirming' || Date.now() < hotUntil) {
+    submitText(text);                // emenda logo após a resposta (ou confirmação): direto
+  } else if (isAwake()) {
+    // janela de conversa: o classificador (Haiku) decide se era com ele
+    $('interim').textContent = '🤔 analisando se era comigo…';
+    send({ type: 'maybe_text', text });
+  } else {
+    // fora da janela e sem wake word: descarta, com feedback discreto
+    $('interim').textContent = `“${text.slice(0, 60)}” — ignorado (sem “${persCfg.nome}”)`;
+    setTimeout(() => { if (!recActive || state === 'idle') $('interim').textContent = ''; }, 1800);
+  }
+}
+
+// ---------- WebSocket ----------
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => {
+    wsOk = true;
+    $('chip-online').textContent = '● ONLINE';
+    $('chip-online').classList.add('on');
+  };
+  ws.onclose = () => {
+    wsOk = false;
+    $('chip-online').textContent = '● RECONECTANDO…';
+    $('chip-online').classList.remove('on');
+    setTimeout(connect, 1500);
+  };
+  ws.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    handleMessage(m);
+  };
+}
+function send(obj) { if (wsOk) ws.send(JSON.stringify(obj)); }
+
+function handleMessage(m) {
+  switch (m.type) {
+    case 'hello':
+      $('sb-ws').textContent = m.workspace || '—';
+      $('sb-session').textContent = m.session || '—';
+      if (m.personality) applyPersonality(m.personality, m.voice);
+      break;
+    case 'personality':
+      applyPersonality(m.config, m.voice);
+      break;
+    case 'hello_agent':
+      $('sb-session').textContent = 'ativa · ' + (m.sessionId || '').slice(0, 8);
+      break;
+    case 'user_echo':
+      clientTurn = m.turn;
+      stopAllAudio();           // barge-in visual: turno novo mata áudio velho
+      finishJarvisBubble();
+      wake(CONV_MS);            // conversa engajada enquanto houver interação
+      $('interim').textContent = '';
+      addMsg('user', 'Matheus', m.text);
+      break;
+    case 'ignored':
+      $('interim').textContent = `“${m.text.slice(0, 50)}” — ignorei, não era comigo`;
+      setTimeout(() => { if (state === 'idle' || state === 'listening') $('interim').textContent = ''; }, 2500);
+      break;
+    case 'status':
+      if (m.state === 'thinking') setState('thinking');
+      else if (m.state === 'confirming') setState('confirming');
+      else if (m.state === 'idle' && !audioPlaying()) idleOrListen();
+      break;
+    case 'assistant_delta':
+      appendJarvisDelta(m.text);
+      break;
+    case 'assistant_text':
+      // bloco consolidado — garante que o balão final bate com o texto oficial
+      setJarvisBubble(m.text);
+      break;
+    case 'tool':
+      $('toolline').textContent = `usando ${m.label || m.name}…`;
+      break;
+    case 'audio_chunk':
+      if (m.turn === clientTurn) enqueueAudio(m.data);
+      break;
+    case 'audio_stop':
+      stopAllAudio();
+      break;
+    case 'tts_fallback':
+      if (m.turn === clientTurn) speakFallback(m.text);
+      break;
+    case 'confirm_request':
+      showConfirm(m.question);
+      break;
+    case 'turn_end':
+      $('toolline').textContent = '';
+      finishJarvisBubble();
+      if (m.ms) $('sb-metrics').innerHTML = `último turno: <b>${(m.ms / 1000).toFixed(1)}s</b>`;
+      if (!audioPlaying()) idleOrListen();
+      break;
+    case 'metrics':
+      if (m.firstAudioMs) $('sb-metrics').innerHTML = `1º áudio: <b>${(m.firstAudioMs / 1000).toFixed(1)}s</b>`;
+      break;
+    case 'error':
+      addMsg('jarvis', 'Sistema', m.text);
+      break;
+  }
+}
+
+// ---------- log ----------
+let jarvisBubble = null;
+function addMsg(cls, who, text) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  const w = document.createElement('span'); w.className = 'who'; w.textContent = who;
+  d.appendChild(w);
+  d.appendChild(document.createTextNode(text));
+  $('msgs').appendChild(d);
+  $('msgs').scrollTop = $('msgs').scrollHeight;
+  return d;
+}
+function ensureJarvisBubble() {
+  if (!jarvisBubble) jarvisBubble = addMsg('jarvis', 'Jarvis', '');
+  return jarvisBubble;
+}
+function appendJarvisDelta(t) {
+  const b = ensureJarvisBubble();
+  b.appendChild(document.createTextNode(t));
+  $('msgs').scrollTop = $('msgs').scrollHeight;
+}
+function setJarvisBubble(t) {
+  const b = ensureJarvisBubble();
+  while (b.childNodes.length > 1) b.removeChild(b.lastChild);
+  b.appendChild(document.createTextNode(t));
+}
+function finishJarvisBubble() { jarvisBubble = null; }
+
+// ---------- confirmação ----------
+function showConfirm(question) {
+  removeConfirm();
+  confirmBox = document.createElement('div');
+  confirmBox.className = 'confirmbox';
+  confirmBox.innerHTML = `<span>⚠ ${question}</span>`;
+  const btns = document.createElement('div');
+  btns.className = 'btns';
+  const yes = document.createElement('button'); yes.className = 'yes'; yes.textContent = 'Sim, confirmo';
+  const no = document.createElement('button'); no.textContent = 'Negar';
+  yes.onclick = () => { send({ type: 'confirm_response', approved: true }); removeConfirm(); };
+  no.onclick = () => { send({ type: 'confirm_response', approved: false }); removeConfirm(); };
+  btns.append(yes, no);
+  confirmBox.appendChild(btns);
+  $('msgs').appendChild(confirmBox);
+  $('msgs').scrollTop = $('msgs').scrollHeight;
+}
+function removeConfirm() { confirmBox?.remove(); confirmBox = null; }
+
+// ---------- áudio (fila gapless via Web Audio) ----------
+let actx = null;
+let nextTime = 0;
+let activeSources = [];
+let pendingDecodes = 0;
+
+function audioCtx() {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+function audioPlaying() { return activeSources.length > 0 || pendingDecodes > 0; }
+
+async function enqueueAudio(b64) {
+  const ctx = audioCtx();
+  pendingDecodes++;
+  try {
+    const bin = atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    const audio = await ctx.decodeAudioData(buf.buffer);
+    pendingDecodes--;
+    const src = ctx.createBufferSource();
+    src.buffer = audio;
+    src.connect(ctx.destination);
+    const startAt = Math.max(ctx.currentTime + 0.06, nextTime);
+    src.start(startAt);
+    nextTime = startAt + audio.duration;
+    activeSources.push(src);
+    if (state !== 'confirming') setState('speaking');
+    // barge-in por voz: a escuta continua ligada durante a fala (AEC do Chrome
+    // suprime o eco; handleFinal só aceita wake word enquanto o áudio toca)
+    src.onended = () => {
+      activeSources = activeSources.filter((s) => s !== src);
+      if (!audioPlaying()) {
+        if (state === 'speaking') idleOrListen();
+        else if (state === 'confirming') resumeRecognition();
+      }
+    };
+  } catch (e) {
+    pendingDecodes--;
+    console.error('decode falhou', e);
+  }
+}
+function stopAllAudio() {
+  for (const s of activeSources) { try { s.stop(); } catch {} }
+  activeSources = [];
+  nextTime = 0;
+  speechSynthesis.cancel();
+}
+function speakFallback(text) {
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'pt-BR';
+  u.rate = persCfg.velocidade || 1;
+  u.onstart = () => { if (state !== 'confirming') setState('speaking'); };
+  u.onend = () => { if (!speechSynthesis.pending && !audioPlaying() && state === 'speaking') idleOrListen(); };
+  speechSynthesis.speak(u);
+}
+
+// ---------- STT (Web Speech API) ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+let recActive = false;
+let recWanted = false;
+
+function initRecognition() {
+  if (!SR) { addMsg('jarvis', 'Sistema', 'Reconhecimento de voz indisponível neste navegador. Use Chrome/Edge.'); return null; }
+  const r = new SR();
+  r.lang = 'pt-BR';
+  r.interimResults = true;
+  r.continuous = true;   // standby contínuo (Fase 2)
+  r.onstart = () => { recActive = true; if (state === 'idle' && isAwake()) setState('listening'); };
+  r.onspeechstart = () => { if (isAwake()) $('interim').textContent = '🎤 fala detectada…'; };
+  r.onend = () => {
+    recActive = false;
+    $('interim').textContent = '';
+    if (state === 'listening') setState('idle');
+    // Chrome derruba a escuta sozinho: religa se ainda queremos ouvir
+    // (inclusive durante a fala do Jarvis — barge-in por voz)
+    if (recWanted && micOn) setTimeout(() => startRecognition(), 250);
+  };
+  r.onerror = (e) => {
+    recActive = false;
+    console.error('speech error:', e.error, e.message || '');
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      micOn = false; updateMicUi();
+      addMsg('jarvis', 'Sistema', `Reconhecimento bloqueado (${e.error}). Verifique a permissão do microfone no cadeado da barra da janela.`);
+    } else if (e.error === 'network') {
+      addMsg('jarvis', 'Sistema', 'Reconhecimento falhou: erro de rede com o serviço de voz do Google (network). Verifique a internet.');
+    } else if (e.error === 'audio-capture') {
+      addMsg('jarvis', 'Sistema', 'Nenhum microfone capturável (audio-capture). Verifique o dispositivo de entrada nas configurações de som do GNOME.');
+    } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      addMsg('jarvis', 'Sistema', `Reconhecimento falhou: ${e.error}`);
+    }
+  };
+  r.onresult = (e) => {
+    let interim = '', final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t; else interim += t;
+    }
+    $('interim').textContent = interim;
+    if (final.trim()) {
+      $('interim').textContent = '';
+      handleFinal(final.trim());
+    }
+  };
+  return r;
+}
+function startRecognition() {
+  if (!micOn || recActive) return;
+  rec = rec || initRecognition();
+  if (!rec) return;
+  recWanted = true;
+  try { rec.start(); } catch {}
+}
+function pauseRecognition() { recWanted = false; try { rec?.stop(); } catch {} }
+function resumeRecognition() { if (micOn) { recWanted = true; startRecognition(); } }
+
+function updateMicUi() {
+  $('micbtn').classList.toggle('off', !micOn);
+  const chip = $('chip-mic');
+  chip.textContent = micOn ? '🎙 escuta ativa' : '🎙 modo privado';
+  chip.classList.toggle('on', micOn);
+  if (!micOn) { pauseRecognition(); if (state === 'listening') setState('idle'); }
+  else if (!audioPlaying() && (state === 'idle' || state === 'listening')) resumeRecognition();
+  if (state === 'idle') setState('idle'); // atualiza o label
+}
+
+// ---------- envio ----------
+function submitText(text) {
+  if (!text) return;
+  audioCtx(); // desbloqueia áudio a partir de um gesto/fala
+  removeConfirm();
+  send({ type: 'user_text', text });
+}
+function idleOrListen() {
+  removeConfirm();
+  if (micOn) {
+    wake(CONV_MS);                      // conversa segue engajada por 90s
+    hotUntil = Date.now() + HOT_MS;     // e os primeiros 10s aceitam direto
+    setState('listening');
+    resumeRecognition();
+  } else setState('idle');
+}
+
+// watchdog: se o Chrome derrubar a escuta contínua, religa sozinho
+setInterval(() => {
+  if (micOn && !recActive) startRecognition();
+}, 5000);
+
+// ---------- painel de personalidade ----------
+const SLIDERS = ['humor', 'sarcasmo', 'formalidade', 'prolixidade'];
+
+function applyPersonality(cfg, voice) {
+  persCfg = { ...persCfg, ...cfg };
+  WAKE = buildWake(persCfg.nome);
+  const v = voice || persCfg.voz || '';
+  $('sb-voice').textContent = v.startsWith('eleven:')
+    ? 'Elvis · ElevenLabs'
+    : v.replace(/^[a-z]{2}-[A-Z]{2}-/, '').replace(/(Multilingual)?Neural/, '') + ' · pt-BR';
+  document.querySelector('.statusbar b').textContent = `"${persCfg.nome}"`;
+  document.querySelector('.titlebar .name').textContent =
+    persCfg.nome.toUpperCase().split('').join('.') + '.';
+  document.title = persCfg.nome.toUpperCase();
+  if (state === 'idle') setState('idle');
+  refreshSettingsUi();
+}
+
+function refreshSettingsUi() {
+  for (const b of document.querySelectorAll('.preset'))
+    b.classList.toggle('on', b.dataset.preset === persCfg.preset);
+  for (const k of SLIDERS) {
+    const el = $('s-' + k), pct = Math.round((persCfg[k] ?? 0) * 100);
+    el.value = pct;
+    el.style.setProperty('--fill', pct + '%');
+    $('v-' + k).textContent = pct + '%';
+  }
+  const vel = Math.round((persCfg.velocidade || 1) * 100);
+  $('s-velocidade').value = vel;
+  $('s-velocidade').style.setProperty('--fill', ((vel - 80) / 70 * 100) + '%');
+  $('v-velocidade').textContent = vel + '%';
+  $('f-nome').value = persCfg.nome;
+  $('f-tratamento').value = persCfg.tratamento;
+  $('f-voz').value = persCfg.voz;
+  $('t-sons').classList.toggle('on', sonsOn);
+}
+
+let sendPersTimer = null;
+function sendPersonality(announce = false) {
+  clearTimeout(sendPersTimer);
+  sendPersTimer = setTimeout(() => {
+    send({ type: 'set_personality', announce, config: { ...persCfg } });
+  }, announce ? 0 : 500);
+}
+
+document.querySelector('.titlebar .right .chip:last-child').onclick = () => {
+  $('settings').hidden = false; refreshSettingsUi();
+};
+$('settings-close').onclick = () => { $('settings').hidden = true; };
+$('settings').addEventListener('click', (e) => { if (e.target === $('settings')) $('settings').hidden = true; });
+
+$('presets').addEventListener('click', (e) => {
+  const p = e.target.dataset?.preset;
+  if (!p) return;
+  persCfg = { ...persCfg, preset: p, ...PRESET_DEFAULTS[p] };
+  applyPersonality(persCfg);
+  sendPersonality(true);              // anuncia com a saudação do preset (e a voz nova)
+});
+for (const k of SLIDERS) {
+  $('s-' + k).addEventListener('input', (e) => {
+    persCfg[k] = e.target.value / 100;
+    e.target.style.setProperty('--fill', e.target.value + '%');
+    $('v-' + k).textContent = e.target.value + '%';
+    sendPersonality();
+  });
+}
+$('s-velocidade').addEventListener('input', (e) => {
+  persCfg.velocidade = e.target.value / 100;
+  e.target.style.setProperty('--fill', ((e.target.value - 80) / 70 * 100) + '%');
+  $('v-velocidade').textContent = e.target.value + '%';
+  sendPersonality();
+});
+$('s-velocidade').addEventListener('change', () => sendPersonality(true)); // ouve o resultado
+$('f-nome').addEventListener('change', (e) => {
+  persCfg.nome = e.target.value.trim() || 'Jarvis';
+  applyPersonality(persCfg); sendPersonality();
+});
+$('f-tratamento').addEventListener('change', (e) => { persCfg.tratamento = e.target.value.trim(); sendPersonality(); });
+$('f-voz').addEventListener('change', (e) => { persCfg.voz = e.target.value; sendPersonality(true); });
+$('t-sons').onclick = () => {
+  sonsOn = !sonsOn;
+  try { localStorage.setItem('jarvis_sons', sonsOn ? '1' : '0'); } catch {}
+  $('t-sons').classList.toggle('on', sonsOn);
+  if (sonsOn) blip();
+};
+
+// ---------- interações ----------
+$('micbtn').onclick = () => { micOn = !micOn; updateMicUi(); };
+$('chip-mic').onclick = () => { micOn = !micOn; updateMicUi(); };
+$('reactor').onclick = () => {
+  if (audioPlaying() || state === 'thinking') {
+    // barge-in: interrompe fala e tarefa
+    stopAllAudio();
+    send({ type: 'cancel' });
+    idleOrListen();
+  } else if (!micOn) {
+    micOn = true; updateMicUi();
+  } else {
+    blip(); wake();          // ativação manual: mesmo efeito de dizer "Jarvis"
+    startRecognition();
+  }
+};
+$('textin').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.value.trim()) {
+    submitText(e.target.value.trim());
+    e.target.value = '';
+  }
+});
+
+connect();
+setState('idle');
+
+// standby automático ao abrir (a permissão do mic fica salva no perfil do app)
+if (SR) { micOn = true; updateMicUi(); }
+
+// desbloqueio de áudio: o Chrome exige um gesto antes de permitir som
+if (audioCtx().state === 'suspended') {
+  const un = document.createElement('div');
+  un.id = 'unlock';
+  un.textContent = '🔊 clique em qualquer lugar para ativar o som';
+  document.body.appendChild(un);
+  const prime = () => {
+    audioCtx();
+    if (actx.state !== 'suspended') { un.remove(); document.removeEventListener('click', prime); }
+  };
+  document.addEventListener('click', prime);
+}
+</script>
+</body>
+</html>

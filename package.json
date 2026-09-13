@@ -1,0 +1,15 @@
+{
+  "name": "jarvis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.270",
+    "express": "^5.2.1",
+    "msedge-tts": "^2.0.7",
+    "ws": "^8.21.3"
+  }
+}
