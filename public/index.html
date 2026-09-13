@@ -593,6 +593,9 @@ function handleMessage(m) {
     case 'error':
       addMsg('jarvis', 'Sistema', m.text);
       break;
+    case 'notice':
+      addMsg('jarvis', 'Jarvis', m.text);
+      break;
     case 'reload':
       if (!audioPlaying() && state !== 'thinking') location.reload();
       else setTimeout(() => location.reload(), 6000);
