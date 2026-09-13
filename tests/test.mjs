@@ -72,6 +72,12 @@ test('SENSITIVE_TOOL: ações sim, leituras não', () => {
     assert.doesNotMatch(t, SENSITIVE_TOOL, t);
 });
 
+test('SENSITIVE_TOOL: criar conteúdo no Notion não é ação sensível, apagar continua sendo', () => {
+  for (const t of ['mcp__notionApi__API-post-page', 'mcp__notionApi__API-post-search', 'mcp__notionApi__API-patch-block-children'])
+    assert.doesNotMatch(t, SENSITIVE_TOOL, t);
+  assert.match('mcp__notionApi__API-delete-a-block', SENSITIVE_TOOL, 'delete-a-block');
+});
+
 test('isInsideHome', () => {
   const home = '/home/matheus', ws = '/home/matheus/Documentos';
   assert.equal(isInsideHome(home, ws, 'nota.txt', path), true);
