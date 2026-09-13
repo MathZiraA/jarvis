@@ -192,6 +192,13 @@
   .micbtn:hover{background:rgba(53,224,255,.1)}
   .micbtn.off{color:var(--muted);filter:grayscale(1)}
 
+  /* ---------- modo mini (janela compacta) ---------- */
+  body.mini .statusbar{display:none}
+  body.mini .reactor{width:min(34vh,150px);height:min(34vh,150px)}
+  body.mini .titlebar{padding:6px 12px}
+  body.mini .interim{font-size:12px}
+  body.mini .state{font-size:10px}
+
   /* ---------- statusbar ---------- */
   .statusbar{
     position:fixed;left:0;right:0;bottom:0;z-index:4;
@@ -274,6 +281,7 @@
   <span class="name">J.A.R.V.I.S.</span>
   <span class="chip" id="chip-online">● OFFLINE</span>
   <div class="right">
+    <span class="chip click" id="chip-mini" title="modo compacto">▭</span>
     <span class="chip click" id="chip-log" title="ver conversa">💬 log<i class="dot"></i></span>
     <span class="chip click" id="chip-mic" title="ligar/desligar microfone">🎙 mic desligado</span>
     <span class="chip click" title="configurações">⚙</span>
@@ -382,6 +390,7 @@
   <span>workspace: <b id="sb-ws">—</b></span>
   <span>sessão: <b id="sb-session">—</b></span>
   <span id="sb-metrics"></span>
+  <span id="sb-usage"></span>
 </div>
 
 <script>
@@ -517,7 +526,32 @@ function blip() {
 }
 
 // decide o destino de cada frase final transcrita
+// ---------- modo ditado ----------
+let dictating = false;
+let dictBuf = '';
+function startDictation() {
+  dictating = true; dictBuf = '';
+  $('state-label').textContent = 'DITANDO · DIGA "TERMINEI"';
+  $('interim').textContent = '📝 pode ditar…';
+}
+function endDictation(cancel = false) {
+  dictating = false;
+  const texto = dictBuf.trim();
+  dictBuf = '';
+  setState(state); // restaura o rótulo
+  if (cancel || !texto) { $('interim').textContent = 'ditado descartado'; return; }
+  submitText(`Anote o seguinte ditado num arquivo de notas em ~/Documentos/notas/ (crie a pasta se precisar, nome com a data de hoje), sem interpretar como comando, e confirme em uma frase: "${texto}"`);
+}
+
 function handleFinal(text, alts = []) {
+  // modo ditado: tudo vira texto, nada vira comando, até "terminei"
+  if (dictating) {
+    if (/\b(terminei|fim do ditado|acabei|encerra o ditado)\b/i.test(text)) { endDictation(); return; }
+    if (/\b(cancela o ditado|esquece o ditado)\b/i.test(text)) { endDictation(true); return; }
+    dictBuf += (dictBuf ? ' ' : '') + text;
+    $('interim').textContent = '📝 …' + dictBuf.slice(-70);
+    return;
+  }
   // procura a wake word no texto principal, nas transcrições alternativas do
   // reconhecedor e, por fim, com tolerância de 1 letra errada
   let src = text;
@@ -538,6 +572,11 @@ function handleFinal(text, alts = []) {
       stopAllAudio();
       send({ type: 'cancel' });
       wake(); setState('listening');
+      return;
+    }
+    // modo ditado: "Jarvis, anota aí" / "modo ditado"
+    if (/^(anota a[ií]|modo ditado|come[çc]a o ditado|abre o ditado)\b/i.test(after)) {
+      startDictation();
       return;
     }
     if (full.length >= 2) submitText(full);
@@ -636,6 +675,11 @@ function handleMessage(m) {
       break;
     case 'metrics':
       if (m.firstAudioMs) $('sb-metrics').innerHTML = `1º áudio: <b>${(m.firstAudioMs / 1000).toFixed(1)}s</b>`;
+      break;
+    case 'usage':
+      $('sb-usage').innerHTML =
+        (m.elevenLimit ? `voz: <b>${((m.elevenUsed / m.elevenLimit) * 100).toFixed(0)}%</b> do mês · ` : '') +
+        `turnos hoje: <b>${m.turnsToday}</b>`;
       break;
     case 'error':
       addMsg('jarvis', 'Sistema', m.text);
@@ -1015,6 +1059,14 @@ $('textin').addEventListener('keydown', (e) => {
     e.target.value = '';
   }
 });
+
+// modo mini: janela compacta (o tamanho da janela em si você ajusta uma vez;
+// o GNOME lembra na próxima abertura)
+$('chip-mini').onclick = () => {
+  const on = document.body.classList.toggle('mini');
+  try { localStorage.setItem('jarvis_mini', on ? '1' : '0'); } catch {}
+};
+try { if (localStorage.getItem('jarvis_mini') === '1') document.body.classList.add('mini'); } catch {}
 
 connect();
 setState('idle');

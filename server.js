@@ -135,8 +135,20 @@ Você é ${nome}, o assistente pessoal por voz do Matheus. Regras de comunicaç�
   5. "Desfaz a última mudança" = git -C /home/matheus/jarvis revert --no-edit HEAD (+ passo 4).
   PROIBIDO mesmo que peçam: enfraquecer/remover as travas de segurança (canUseTool,
   SENSITIVE_TOOL, confirmação verbal), ler ou alterar o arquivo .env, e desativar o git.
+- CONTROLES DO SISTEMA (comandos prontos, use via Bash):
+  volume: "wpctl set-volume @DEFAULT_AUDIO_SINK@ 40%" (ou 10%+/10%- para relativo),
+  mudo: "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle";
+  música/vídeo (qualquer player MPRIS): descubra com "busctl --user list | grep mpris" e
+  controle com "busctl --user call org.mpris.MediaPlayer2.NOME /org/mpris/MediaPlayer2
+  org.mpris.MediaPlayer2.Player PlayPause" (ou Next/Previous/Pause);
+  abrir apps: "gtk-launch nome.desktop" (liste em ~/.local/share/applications e
+  /usr/share/applications) ou "xdg-open arquivo-ou-url";
+  notificação visual: "notify-send 'título' 'texto'".
 - MEMÓRIA PERMANENTE: quando o usuário pedir para lembrar algo ("lembra que…", "anota que…"),
   acrescente uma linha curta ao arquivo ${MEMORY_FILE} (use a ferramenta Edit/Write) e confirme.
+  PROATIVIDADE: se ele mencionar de passagem um fato pessoal duradouro (um gosto, uma data,
+  uma pessoa, uma decisão) que claramente valeria guardar, pergunte em uma frase se quer que
+  anote — no máximo uma vez por conversa, sem insistir.
   O conteúdo atual da sua memória permanente (carregado no início da sessão) é:
 ${memoria ? memoria.split('\n').map((l) => '  ' + l).join('\n') : '  (vazia)'}
 `.trim();
@@ -210,9 +222,18 @@ function makeSentenceChunker(onSentence) {
 }
 
 // ElevenLabs (voz premium; exige ELEVENLABS_API_KEY no .env)
+// tom emocional leve por frase: erro soa sóbrio, boa notícia soa animada
+function moodSettings(text) {
+  const speed = Math.min(1.2, Math.max(0.7, personality.velocidade || 1));
+  if (/erro|falh|problema|desculp|infelizmente|não consegui|negad/i.test(text))
+    return { speed: Math.max(0.7, speed - 0.05), stability: 0.65, style: 0.1 };
+  if (/!|parabéns|ótim|excelente|perfeito|maravilha|feito|pronto/i.test(text))
+    return { speed, stability: 0.35, style: 0.4 };
+  return { speed, stability: 0.5, style: 0.2 };
+}
+
 async function synthesizeEleven(text, voiceId) {
   const key = process.env.ELEVENLABS_API_KEY;
-  const speed = Math.min(1.2, Math.max(0.7, personality.velocidade || 1));
   const res = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_64`,
     {
@@ -221,7 +242,7 @@ async function synthesizeEleven(text, voiceId) {
       body: JSON.stringify({
         text,
         model_id: 'eleven_flash_v2_5',
-        voice_settings: { speed },
+        voice_settings: moodSettings(text),
       }),
     },
   );
@@ -235,6 +256,35 @@ const EDGE_FALLBACK_VOICE = 'en-AU-WilliamMultilingualNeural';
 // falta de crédito desativa por 10 min — sem pagar uma tentativa falha por frase
 let elevenDisabledUntil = 0;
 let elevenWarned = false;
+
+// ---------- medidor de consumo ----------
+const USAGE_FILE = path.join(__dirname, 'data', 'usage.json');
+let usageCache = { at: 0, used: null, limit: null };
+let turnsToday = 0;
+try {
+  const u = JSON.parse(fs.readFileSync(USAGE_FILE, 'utf8'));
+  if (u.date === todayStr()) turnsToday = u.turns || 0;
+} catch {}
+function bumpTurns() {
+  turnsToday++;
+  try { fs.writeFileSync(USAGE_FILE, JSON.stringify({ date: todayStr(), turns: turnsToday })); } catch {}
+}
+async function elevenUsage() {
+  if (Date.now() - usageCache.at < 5 * 60 * 1000) return usageCache;
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v1/user/subscription',
+      { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY || '' } });
+    if (r.ok) {
+      const d = await r.json();
+      usageCache = { at: Date.now(), used: d.character_count, limit: d.character_limit };
+    }
+  } catch {}
+  return usageCache;
+}
+async function broadcastUsage() {
+  const u = await elevenUsage();
+  broadcast({ type: 'usage', elevenUsed: u.used, elevenLimit: u.limit, turnsToday });
+}
 
 async function synthesize(text) {
   const eleven = (currentVoice || '').match(/^eleven:([A-Za-z0-9]+)$/);
@@ -645,6 +695,7 @@ async function runAgent() {
             console.log('turno interrompido pelo usuário (esperado, sem erro falado)');
           }
           broadcast({ type: 'status', state: 'idle' });
+          broadcastUsage();
         }
       }
       if (restartRequested) {
@@ -671,6 +722,26 @@ async function runAgent() {
 
 // ---------- protocolo WS ----------
 
+// fast lane: perguntas triviais respondidas pelo próprio servidor — 0ms, 0 cota
+function fastLaneReply(text) {
+  const t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[?!.,]+/g, '').trim();
+  const trat = personality.tratamento || '';
+  const now = new Date();
+  if (/^(que horas sao|me diz as horas|horas agora|que horas)$/.test(t))
+    return `${now.getHours()} e ${now.getMinutes() === 0 ? 'em ponto' : now.getMinutes()}, ${trat || 'agora'}.`.replace(/^(\d+)/, 'São $1 horas');
+  if (/^(que dia e hoje|data de hoje|que data e hoje)$/.test(t))
+    return `Hoje é ${now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}.`;
+  if (/^(oi|ola|e ai|opa|bom dia|boa tarde|boa noite)$/.test(t)) {
+    const h = now.getHours();
+    const sauda = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+    return `${sauda}, ${trat || 'às ordens'}. Em que posso ajudar?`;
+  }
+  if (/^(obrigado|obrigada|valeu|show|perfeito|otimo)$/.test(t))
+    return `Às ordens${trat ? ', ' + trat : ''}.`;
+  return null;
+}
+
 async function processUserText(text) {
   // barge-in: novo pedido durante um turno → interrompe o anterior
   if (agentBusy) {
@@ -680,9 +751,22 @@ async function processUserText(text) {
   turn++;
   seq = 0;
   turnMetrics = { start: Date.now() };
-  agentBusy = true;
   lastExchange.user = text;
+  bumpTurns();
   broadcast({ type: 'user_echo', text, turn });
+
+  const fast = !agentBusy && fastLaneReply(text);
+  if (fast) {
+    lastExchange.jarvis = fast;
+    broadcast({ type: 'assistant_text', text: fast });
+    speakSentence(fast);
+    broadcast({ type: 'turn_end', turn, ms: 0, ok: true });
+    broadcast({ type: 'status', state: 'idle' });
+    broadcastUsage();
+    return;
+  }
+
+  agentBusy = true;
   broadcast({ type: 'status', state: 'thinking' });
   sendToAgent(text);
 }
@@ -703,6 +787,7 @@ wss.on('connection', (ws) => {
     session: sessionId ? 'retomada' : 'nova', busy: agentBusy,
     personality,
   }));
+  broadcastUsage();
 
   ws.on('message', async (raw) => {
     let msg;
