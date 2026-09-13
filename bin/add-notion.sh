@@ -14,7 +14,7 @@ python3 - <<EOF
 import json
 p = '$HOME/.claude.json'
 d = json.load(open(p))
-d.setdefault('mcpServers', {})['notion'] = {
+d.setdefault('mcpServers', {})['notionApi'] = {
     'type': 'stdio',
     'command': 'npx',
     'args': ['-y', '@notionhq/notion-mcp-server'],

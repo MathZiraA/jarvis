@@ -1,0 +1,18 @@
+[Unit]
+Description=JARVIS — assistente pessoal por voz (servidor)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/jarvis
+# rede de segurança da auto-evolução: código com erro de sintaxe é revertido
+# para o último commit antes de subir (o Jarvis nunca fica "bricado")
+ExecStartPre=/bin/bash -c '/usr/bin/node --check %h/jarvis/server.js || /usr/bin/git -C %h/jarvis checkout HEAD -- server.js'
+ExecStart=/usr/bin/node %h/jarvis/server.js
+Restart=on-failure
+RestartSec=3
+Environment=NODE_ENV=production
+EnvironmentFile=-%h/jarvis/.env
+
+[Install]
+WantedBy=default.target
