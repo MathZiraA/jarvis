@@ -356,7 +356,10 @@
             <option value="en-US-AndrewMultilingualNeural">Andrew — grave, estilo Jarvis</option>
             <option value="en-US-BrianMultilingualNeural">Brian — polido, estilo Jarvis</option>
             <option value="en-AU-WilliamMultilingualNeural">William — britânico, estilo Jarvis</option>
-            <option value="eleven:zNEsdgTUa3ndwKry8Xcq">Elvis — ElevenLabs premium ★</option>
+            <option value="eleven:nPczCjzI2devNBz1zQrb">Brian — ElevenLabs grave ★</option>
+            <option value="eleven:onwK4e9ZLuTAKqWW03F9">Daniel — ElevenLabs britânico ★</option>
+            <option value="eleven:JBFqnCBsd6RMkjVDRZzb">George — ElevenLabs storyteller ★</option>
+            <option value="eleven:zNEsdgTUa3ndwKry8Xcq">Elvis — ElevenLabs (exige plano pago)</option>
           </select>
         </div>
         <div class="field">
@@ -833,8 +836,10 @@ function applyPersonality(cfg, voice) {
   persCfg = { ...persCfg, ...cfg };
   WAKE = buildWake(persCfg.nome);
   const v = voice || persCfg.voz || '';
+  const ELEVEN_NAMES = { zNEsdgTUa3ndwKry8Xcq: 'Elvis', nPczCjzI2devNBz1zQrb: 'Brian',
+    onwK4e9ZLuTAKqWW03F9: 'Daniel', JBFqnCBsd6RMkjVDRZzb: 'George' };
   $('sb-voice').textContent = v.startsWith('eleven:')
-    ? 'Elvis · ElevenLabs'
+    ? (ELEVEN_NAMES[v.slice(7)] || 'ElevenLabs') + ' · ElevenLabs'
     : v.replace(/^[a-z]{2}-[A-Z]{2}-/, '').replace(/(Multilingual)?Neural/, '') + ' · pt-BR';
   document.querySelector('.statusbar b').textContent = `"${persCfg.nome}"`;
   document.querySelector('.titlebar .name').textContent =

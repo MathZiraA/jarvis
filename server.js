@@ -248,6 +248,12 @@ async function synthesize(text) {
           elevenWarned = true;
           setTimeout(() => speakOutOfBand('A chave da ElevenLabs é inválida, senhor. Sigo com a voz reserva até ela ser corrigida.'), 10);
         }
+      } else if (/payment_required|paid_plan/i.test(msg)) {
+        elevenDisabledUntil = Infinity;
+        if (!elevenWarned) {
+          elevenWarned = true;
+          setTimeout(() => speakOutOfBand('Essa voz da ElevenLabs exige plano pago, senhor. Sigo com a voz reserva.'), 10);
+        }
       } else if (/quota|credit|429/i.test(msg)) {
         elevenDisabledUntil = Date.now() + 10 * 60 * 1000;
         if (!elevenWarned) {
