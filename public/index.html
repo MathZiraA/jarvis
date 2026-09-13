@@ -824,13 +824,40 @@ function initRecognition() {
         for (let j = 1; j < res.length; j++) if (res[j]?.transcript) alts.push(res[j].transcript);
       } else interim += res[0].transcript;
     }
-    $('interim').textContent = interim;
-    if (final.trim()) {
-      $('interim').textContent = '';
-      handleFinal(final.trim(), alts);
+    if (interim) {
+      // usuário voltou a falar: segura qualquer envio pendente — é continuação
+      clearTimeout(pendTimer);
+      $('interim').textContent = (pendBuf ? '⏸ ' + pendBuf.slice(-50) + ' … ' : '') + interim;
     }
+    if (final.trim()) queueFinal(final.trim(), alts);
   };
   return r;
+}
+
+// ---------- paciência de escuta ----------
+// O reconhecedor fecha a frase em qualquer pausa de respiração. Em vez de enviar
+// na hora, os finais entram num buffer que só vira comando após silêncio real —
+// retomou a fala, o pedaço novo é emendado ao anterior.
+let pendBuf = '', pendAlts = [], pendTimer = null;
+function queueFinal(text, alts) {
+  pendBuf = (pendBuf ? pendBuf + ' ' : '') + text;
+  pendAlts.push(...alts);
+  // urgências não esperam: cancelamento com wake word e respostas de confirmação
+  const urgent = state === 'confirming' ||
+    (WAKE.test(text) && /(cancela|par[ae]|sil[êe]ncio|cala|esquece)/i.test(text));
+  clearTimeout(pendTimer);
+  if (urgent) { flushFinal(); return; }
+  const patience = pendBuf.length < 25 ? 800 : 1600; // curto = ágil, longo = respiro
+  $('interim').textContent = '⏸ ' + pendBuf.slice(-70) + ' …';
+  pendTimer = setTimeout(flushFinal, patience);
+}
+function flushFinal() {
+  clearTimeout(pendTimer);
+  const t = pendBuf.trim(), a = pendAlts;
+  pendBuf = ''; pendAlts = [];
+  if (!t) return;
+  $('interim').textContent = '';
+  handleFinal(t, a);
 }
 function startRecognition() {
   if (!micOn || recActive) return;
