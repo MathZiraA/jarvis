@@ -356,6 +356,10 @@
           <input class="textbox" id="f-tratamento" maxlength="30" placeholder="senhor, chefe…">
         </div>
         <div class="field" style="margin-bottom:16px">
+          <label>Seu nome (como o assistente te chama nas mensagens)</label>
+          <input class="textbox" id="f-usuario" maxlength="30" placeholder="opcional">
+        </div>
+        <div class="field" style="margin-bottom:16px">
           <label>Voz</label>
           <select class="textbox" id="f-voz">
             <option value="pt-BR-AntonioNeural">Antônio — pt-BR neural</option>
@@ -425,21 +429,50 @@ function startThinkSound() {
 }
 function stopThinkSound() { clearInterval(thinkTimer); thinkTimer = null; }
 
+const STATE_EMOJI = { idle: '●', listening: '👂', thinking: '⚙', speaking: '🗣', confirming: '⚠' };
+let listenTimer = null;
+
 function setState(s) {
   state = s;
   if (s === 'thinking') startThinkSound(); else stopThinkSound();
   document.body.dataset.state = (s === 'confirming') ? 'confirming' : s;
-  $('state-label').textContent = {
+  // título da janela = estado visível na dock e no Alt-Tab
+  document.title = `${STATE_EMOJI[s] || '●'} ${(persCfg.nome || 'JARVIS').toUpperCase()}`;
+  clearInterval(listenTimer);
+  const labels = {
     idle: micOn ? `STANDBY · DIGA "${(persCfg.nome || 'JARVIS').toUpperCase()}"` : 'MIC DESLIGADO',
-    listening: 'OUVINDO',
-    thinking: 'PROCESSANDO…',
+    thinking: 'EXECUTANDO…',
     speaking: 'FALANDO',
     confirming: 'AGUARDANDO CONFIRMAÇÃO',
-  }[s] || s.toUpperCase();
+  };
+  if (s === 'listening') {
+    // contagem regressiva da janela de conversa: você vê quando ele "volta a dormir"
+    const tick = () => {
+      const rest = Math.max(0, Math.ceil((awakeUntil - Date.now()) / 1000));
+      $('state-label').textContent = rest > 0 ? `OUVINDO · ${rest}s` : 'OUVINDO';
+      if (rest <= 0) clearInterval(listenTimer);
+    };
+    tick();
+    listenTimer = setInterval(tick, 1000);
+  } else {
+    $('state-label').textContent = labels[s] || s.toUpperCase();
+  }
 }
 
+// notificações do GNOME quando a janela está escondida (tarefa concluída/confirmação)
+function notifyIfHidden(body) {
+  if (!document.hidden) return;
+  try {
+    if (Notification.permission === 'granted') new Notification((persCfg.nome || 'Jarvis'), { body });
+    else if (Notification.permission !== 'denied') Notification.requestPermission();
+  } catch {}
+}
+
+// encerramentos sociais: não merecem resposta falada — blip e silêncio
+const CLOSING_ACK = /^(t[áa]|t[áa] bom|t[áa] bem|beleza|blz|ok|okay|valeu|obrigad[oa]|show|[ée] isso|entendi|perfeito|massa|boa|legal|ent[ãa]o t[áa]|falou|tranquilo|de boa)[.!\s]*$/i;
+
 // ---------- personalidade (Fase 3) ----------
-let persCfg = { preset: 'jarvis', nome: 'Jarvis', tratamento: 'senhor',
+let persCfg = { preset: 'jarvis', nome: 'Jarvis', tratamento: 'senhor', usuario: '',
   humor: .6, sarcasmo: .3, formalidade: .7, prolixidade: .3,
   voz: 'en-AU-WilliamMultilingualNeural', velocidade: 1.2 };
 // defaults locais dos presets (espelho do servidor) para resposta instantânea da UI
@@ -544,8 +577,28 @@ function handleFinal(text, alts = []) {
       startDictation();
       return;
     }
+    // "Jarvis, dorme": fecha a janela de conversa — só a wake word acorda de novo
+    if (/^(dorme|descansa|pode dormir|pode descansar|at[ée] mais|depois falo)\b/i.test(after)) {
+      sleepAgain();
+      blip();
+      $('interim').textContent = '💤 até você me chamar';
+      setState('idle');
+      return;
+    }
+    // encerramento social com o nome ("Jarvis, valeu"): entendido, sem resposta
+    if (CLOSING_ACK.test(after)) {
+      blip(); sleepAgain(); setState('idle');
+      $('interim').textContent = '✓';
+      setTimeout(() => { if (state === 'idle') $('interim').textContent = ''; }, 1200);
+      return;
+    }
     if (full.length >= 2) submitText(full);
     else { stopAllAudio(); if (state === 'thinking' || audioPlaying()) send({ type: 'cancel' }); wake(); }
+  } else if (state !== 'confirming' && (Date.now() < hotUntil || isAwake()) && CLOSING_ACK.test(text)) {
+    // fim de conversa: "tá bom", "beleza", "valeu" — entendido, sem resposta falada
+    blip(); sleepAgain(); setState('idle');
+    $('interim').textContent = '✓';
+    setTimeout(() => { if (state === 'idle') $('interim').textContent = ''; }, 1200);
   } else if (state === 'confirming' || Date.now() < hotUntil) {
     submitText(text);                // emenda logo após a resposta (ou confirmação): direto
   } else if (isAwake()) {
@@ -599,7 +652,7 @@ function handleMessage(m) {
       finishJarvisBubble();
       wake(CONV_MS);            // conversa engajada enquanto houver interação
       $('interim').textContent = '';
-      addMsg('user', 'Matheus', m.text);
+      addMsg('user', persCfg.usuario || 'Você', m.text);
       break;
     case 'ignored':
       $('interim').textContent = `“${m.text.slice(0, 50)}” — ignorei, não era comigo`;
@@ -630,9 +683,11 @@ function handleMessage(m) {
       if (m.turn === clientTurn) speakFallback(m.text);
       break;
     case 'confirm_request':
+      notifyIfHidden('⚠ preciso da sua confirmação');
       showConfirm(m.question);
       break;
     case 'turn_end':
+      if (m.ms > 8000) notifyIfHidden(m.ok ? '✓ tarefa concluída' : '✗ a tarefa teve um problema');
       $('toolline').textContent = '';
       finishJarvisBubble();
       if (m.ms) $('sb-metrics').innerHTML = `último turno: <b>${(m.ms / 1000).toFixed(1)}s</b>`;
@@ -927,7 +982,7 @@ function applyPersonality(cfg, voice) {
   document.querySelector('.statusbar b').textContent = `"${persCfg.nome}"`;
   document.querySelector('.titlebar .name').textContent =
     persCfg.nome.toUpperCase().split('').join('.') + '.';
-  document.title = persCfg.nome.toUpperCase();
+  setState(state);
   if (state === 'idle') setState('idle');
   refreshSettingsUi();
 }
@@ -947,6 +1002,7 @@ function refreshSettingsUi() {
   $('v-velocidade').textContent = vel + '%';
   $('f-nome').value = persCfg.nome;
   $('f-tratamento').value = persCfg.tratamento;
+  $('f-usuario').value = persCfg.usuario || '';
   $('f-voz').value = persCfg.voz;
   $('t-sons').classList.toggle('on', sonsOn);
 }
@@ -992,6 +1048,7 @@ $('f-nome').addEventListener('change', (e) => {
   applyPersonality(persCfg); sendPersonality();
 });
 $('f-tratamento').addEventListener('change', (e) => { persCfg.tratamento = e.target.value.trim(); sendPersonality(); });
+$('f-usuario').addEventListener('change', (e) => { persCfg.usuario = e.target.value.trim(); sendPersonality(); });
 $('f-voz').addEventListener('change', (e) => { persCfg.voz = e.target.value; sendPersonality(true); });
 $('t-sons').onclick = () => {
   sonsOn = !sonsOn;

@@ -85,7 +85,7 @@ test('fast lane responde o trivial e ignora o resto', () => {
   const now = new Date(2026, 8, 13, 14, 30);
   assert.match(fastLaneReply('que horas são?', 'senhor', now), /14 horas e 30, senhor/);
   assert.match(fastLaneReply('bom dia', '', now), /Boa tarde/); // 14h → corrige a saudação
-  assert.match(fastLaneReply('obrigado', 'chefe', now), /Às ordens, chefe/);
+  assert.equal(fastLaneReply('obrigado', 'chefe', now), null); // encerramento é silêncio do frontend
   assert.equal(fastLaneReply('que horas são no japão?', '', now), null);
   assert.equal(fastLaneReply('abre meus e-mails', '', now), null);
 });

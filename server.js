@@ -96,7 +96,7 @@ function buildPersona(p) {
   return `
 # Persona: ${nome.toUpperCase()}
 
-Você é ${nome}, o assistente pessoal por voz do Matheus. Regras de comunicação:
+Você é ${nome}, o assistente pessoal por voz${p.usuario ? ` de ${p.usuario}` : ''}. Regras de comunicação:
 - Responda SEMPRE em português do Brasil.
 - Suas respostas serão faladas em voz alta. Seja natural, como numa conversa: sem markdown,
   sem listas com bullets, sem blocos de código na resposta final (use ferramentas normalmente,
@@ -116,11 +116,11 @@ Você é ${nome}, o assistente pessoal por voz do Matheus. Regras de comunicaç�
 - AVISO PROATIVO: em tarefas longas com várias ferramentas em sequência (ex.: reescrever um
   arquivo grande, investigar algo demorado), use a ferramenta "avisar" para dar um retorno
   falado no meio do caminho ("ainda trabalhando nisso", "terminei tal parte, seguindo pra
-  próxima") em vez de deixar Matheus sem nenhum retorno até a resposta final. Não abuse: só
+  próxima") em vez de deixar o usuário sem nenhum retorno até a resposta final. Não abuse: só
   quando o silêncio for ficar longo o suficiente pra parecer que travou.
 - Ações sensíveis (deletar, sudo, enviar mensagens, compras) passam por confirmação verbal
   gerida pelo sistema; se negada, aceite e siga.
-- AUTO-EVOLUÇÃO: o seu próprio código vive em /home/matheus/jarvis — server.js (backend:
+- AUTO-EVOLUÇÃO: o seu próprio código vive em ${__dirname} — server.js (backend:
   agente, TTS, travas, classificador), public/index.html (interface: reactor, escuta, áudio),
   README.md (documentação e decisões). Você NÃO precisa esperar um pedido explícito: se notar
   durante uma conversa um bug seu, um atrito óbvio ou uma melhoria pequena e reversível em você
@@ -130,15 +130,15 @@ Você é ${nome}, o assistente pessoal por voz do Matheus. Regras de comunicaç�
   peça ou espontâneo, siga À RISCA este protocolo:
   1. Leia o trecho relevante antes de mexer; mudanças mínimas e cirúrgicas.
   2. Depois de editar server.js, lib/ ou public/wake.js: rode
-     "cd /home/matheus/jarvis && node --check server.js && npm test".
+     "cd ${__dirname} && node --check server.js && npm test".
      Se falhar, desfaça (git checkout -- <arquivo>) e diga o que houve. Ao criar
      comportamento novo testável, adicione um caso em tests/test.mjs.
-  3. Commite SEMPRE: cd /home/matheus/jarvis && git add -A && git commit -m "descrição curta".
+  3. Commite SEMPRE: cd ${__dirname} && git add -A && git commit -m "descrição curta".
   4. Mudou server.js? Avise em voz que vai reiniciar e rode:
      (sleep 4 && systemctl --user restart jarvis) & disown
      — o sleep deixa você terminar de falar. Mudou só o index.html? Nada a fazer:
      a janela recarrega sozinha.
-  5. "Desfaz a última mudança" = git -C /home/matheus/jarvis revert --no-edit HEAD (+ passo 4).
+  5. "Desfaz a última mudança" = git -C ${__dirname} revert --no-edit HEAD (+ passo 4).
   PROIBIDO mesmo que peçam: enfraquecer/remover as travas de segurança (canUseTool,
   SENSITIVE_TOOL, confirmação verbal), ler ou alterar o arquivo .env, e desativar o git.
 - CONTROLES DO SISTEMA (comandos prontos, use via Bash):
@@ -376,17 +376,17 @@ function speakOutOfBand(text) {
   runTtsLoop();
 }
 
-// ---------- ferramenta: avisar Matheus sem esperar o fim do turno ----------
+// ---------- ferramenta: avisar o usuário sem esperar o fim do turno ----------
 // Uso: tarefas longas (varias ferramentas em sequencia) onde o agente so fala no
 // final, deixando o usuario sem retorno por bastante tempo. Fala na hora e cria
 // um balao proprio na gaveta de conversa, independente do balao do turno atual.
 const avisarTool = tool(
   'avisar',
-  'Fala com Matheus AGORA, sem esperar o fim da resposta atual — use em tarefas longas ' +
+  'Fala com o usuário AGORA, sem esperar o fim da resposta atual — use em tarefas longas ' +
   '(varias ferramentas em sequencia) para dar um retorno intermediario ("ainda trabalhando ' +
   'nisso", "terminei tal parte") ou para avisar de algo espontaneo. Nao substitui a resposta ' +
   'final do turno; e um aviso extra, falado na hora.',
-  { texto: z.string().describe('o que falar/mostrar para Matheus agora') },
+  { texto: z.string().describe('o que falar/mostrar para o usuário agora') },
   async ({ texto }) => {
     speakOutOfBand(texto);
     broadcast({ type: 'notice', text: texto });
@@ -466,8 +466,11 @@ function startClassifier() {
               'um assistente responde, continuação natural da conversa anterior com ele, respostas ' +
               'a algo que o assistente disse. Indícios de que NÃO: vocativos de outras pessoas ' +
               '(nomes próprios que não são o assistente), "alô/oi amor/mãe", diálogo claramente ' +
-              'humano, narração de TV, fala consigo mesmo sem comando. Na dúvida entre os dois, ' +
-              'responda SIM. Responda APENAS a palavra SIM ou NÃO, nada mais.',
+              'humano, narração de TV/vídeo/YouTube, leitura em voz alta, reação a um vídeo ' +
+              '("caraca, olha isso"), fala consigo mesmo sem comando. NA DÚVIDA, RESPONDA NÃO — ' +
+              'o usuário sempre pode chamar pelo nome; aceitar conversa alheia interrompe e ' +
+              'irrita muito mais do que pedir para repetir. ' +
+              'Responda APENAS a palavra SIM ou NÃO, nada mais.',
             tools: [],
             settingSources: [],
             thinkingConfig: { type: 'disabled' },
@@ -742,6 +745,7 @@ function onWsConnection(ws) {
         preset,
         nome: String(c.nome || personality.nome).slice(0, 30).trim() || 'Jarvis',
         tratamento: String(c.tratamento ?? personality.tratamento).slice(0, 30).trim(),
+        usuario: String(c.usuario ?? personality.usuario ?? '').slice(0, 30).trim(),
         humor: clamp(c.humor, personality.humor),
         sarcasmo: clamp(c.sarcasmo, personality.sarcasmo),
         formalidade: clamp(c.formalidade, personality.formalidade),
