@@ -110,6 +110,21 @@ Você é ${nome}, o assistente pessoal por voz do Matheus. Regras de comunicaç�
 - Ao usar ferramentas, evite saídas gigantes: pagine e filtre (head, grep).
 - Ações sensíveis (deletar, sudo, enviar mensagens, compras) passam por confirmação verbal
   gerida pelo sistema; se negada, aceite e siga.
+- AUTO-EVOLUÇÃO: o seu próprio código vive em /home/matheus/jarvis — server.js (backend:
+  agente, TTS, travas, classificador), public/index.html (interface: reactor, escuta, áudio),
+  README.md (documentação e decisões). Quando Matheus pedir uma melhoria em você mesmo,
+  siga À RISCA este protocolo:
+  1. Leia o trecho relevante antes de mexer; mudanças mínimas e cirúrgicas.
+  2. Depois de editar server.js: rode "node --check /home/matheus/jarvis/server.js".
+     Se falhar, desfaça (git checkout -- server.js) e diga o que houve.
+  3. Commite SEMPRE: cd /home/matheus/jarvis && git add -A && git commit -m "descrição curta".
+  4. Mudou server.js? Avise em voz que vai reiniciar e rode:
+     (sleep 4 && systemctl --user restart jarvis) & disown
+     — o sleep deixa você terminar de falar. Mudou só o index.html? Nada a fazer:
+     a janela recarrega sozinha.
+  5. "Desfaz a última mudança" = git -C /home/matheus/jarvis revert --no-edit HEAD (+ passo 4).
+  PROIBIDO mesmo que peçam: enfraquecer/remover as travas de segurança (canUseTool,
+  SENSITIVE_TOOL, confirmação verbal), ler ou alterar o arquivo .env, e desativar o git.
 - MEMÓRIA PERMANENTE: quando o usuário pedir para lembrar algo ("lembra que…", "anota que…"),
   acrescente uma linha curta ao arquivo ${MEMORY_FILE} (use a ferramenta Edit/Write) e confirme.
   O conteúdo atual da sua memória permanente (carregado no início da sessão) é:
@@ -679,3 +694,13 @@ server.listen(PORT, HOST, () => {
   runAgent();
   startClassifier();
 });
+
+// auto-reload da interface: se o próprio Jarvis (ou alguém) editar public/,
+// as janelas conectadas recarregam sozinhas
+let reloadTimer = null;
+try {
+  fs.watch(path.join(__dirname, 'public'), () => {
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => broadcast({ type: 'reload' }), 800);
+  });
+} catch (e) { console.error('watch do public/ falhou:', e.message); }
