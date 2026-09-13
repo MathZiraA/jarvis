@@ -448,8 +448,8 @@ const WAKE_VARIANTS = {
   'sexta-feira': ['sexta-feira', 'sexta feira', 'sextafeira'],
   ultron: ['ultron', 'últron', 'utron', 'ultrom'],
 };
-let WAKE = buildWake('Jarvis');
 let WAKE_LIST = ['jarvis'];
+let WAKE = buildWake('Jarvis');
 function buildWake(nome) {
   const n = (nome || 'Jarvis').toLowerCase();
   const vs = WAKE_VARIANTS[n] || [n];
