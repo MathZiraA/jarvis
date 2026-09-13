@@ -12,6 +12,10 @@ import { WebSocketServer } from 'ws';
 import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
+import {
+  sanitizeForSpeech, makeSentenceChunker, DANGEROUS_BASH, SENSITIVE_TOOL,
+  isInsideHome as coreIsInsideHome, fastLaneReply as coreFastLaneReply,
+} from './lib/core.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -156,70 +160,7 @@ ${memoria ? memoria.split('\n').map((l) => '  ' + l).join('\n') : '  (vazia)'}
 
 // ---------- utilidades de fala ----------
 
-const ABBREV = new Set([
-  'dr', 'dra', 'sr', 'sra', 'srta', 'prof', 'profa', 'ex', 'etc', 'av', 'r',
-  'p', 'pág', 'pag', 'no', 'núm', 'num', 'tel', 'cel', 'min', 'seg', 'obs',
-  'e.g', 'i.e', 'a.c', 'd.c', 'vs',
-]);
-
-function sanitizeForSpeech(text) {
-  return text
-    .replace(/```[\s\S]*?```/g, ' (código na tela) ')
-    .replace(/`([^`]*)`/g, '$1')
-    .replace(/\*\*?|__|~~|#+\s?/g, '')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/https?:\/\/\S+/g, ' (link na tela) ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-// Quebrador de frases incremental (regras da seção 12.3)
-function makeSentenceChunker(onSentence) {
-  let buf = '';
-  const MIN = 18;
-  const MAX = 300;
-
-  function tryEmit(force = false) {
-    for (;;) {
-      const m = buf.match(/[.!?…](\s+|$)/);
-      if (!m || m.index === undefined) break;
-      const end = m.index + 1;
-      const before = buf.slice(0, m.index);
-      const lastWord = (before.match(/([\p{L}.]+)$/u)?.[1] || '').toLowerCase().replace(/\.$/, '');
-      const isDecimal = /\d[.,]$/.test(before.slice(-2)) && /^\d/.test(buf.slice(end));
-      if (ABBREV.has(lastWord) || isDecimal || (end < MIN && buf.length < MAX)) {
-        // fronteira falsa ou frase curta demais: espera mais texto
-        if (m.index + m[0].length >= buf.length && !force) break;
-        // pula esta fronteira: procura a próxima a partir dela
-        const rest = buf.slice(end);
-        const m2 = rest.match(/[.!?…](\s+|$)/);
-        if (!m2 || m2.index === undefined) break;
-        const end2 = end + m2.index + 1;
-        emit(buf.slice(0, end2));
-        buf = buf.slice(end2).replace(/^\s+/, '');
-        continue;
-      }
-      emit(buf.slice(0, end));
-      buf = buf.slice(end).replace(/^\s+/, '');
-    }
-    // flush de segurança: frase gigante sem pontuação
-    if (buf.length > MAX) {
-      const cut = buf.lastIndexOf(' ', MAX);
-      if (cut > MIN) { emit(buf.slice(0, cut)); buf = buf.slice(cut + 1); }
-    }
-  }
-
-  function emit(raw) {
-    const s = sanitizeForSpeech(raw);
-    if (s) onSentence(s);
-  }
-
-  return {
-    feed(text) { buf += text; tryEmit(); },
-    flush() { tryEmit(true); if (buf.trim()) emit(buf); buf = ''; },
-    reset() { buf = ''; },
-  };
-}
+// sanitizeForSpeech e makeSentenceChunker vivem em lib/core.mjs (testáveis via npm test)
 
 // ElevenLabs (voz premium; exige ELEVENLABS_API_KEY no .env)
 // tom emocional leve por frase: erro soa sóbrio, boa notícia soa animada
@@ -391,15 +332,7 @@ function resolveConfirmation(text) {
   return true;
 }
 
-const DANGEROUS_BASH = /\bsudo\b|\brm\s+(-[a-zA-Z]*[rf][a-zA-Z]*|--recursive|--force)|\bmkfs\b|\bdd\s+if=|\bshutdown\b|\breboot\b|>\s*\/dev\/sd|chmod\s+-R\s+777|\bpasswd\b/;
-// só AÇÕES sensíveis (enviar/apagar) — leitura e busca passam direto
-const SENSITIVE_TOOL = /\b(send|reply|forward|trash|delete|spam|publish|post|tweet|purchase|buy|pay)\w*/i;
-
-function isInsideHome(p) {
-  if (!p) return true;
-  const abs = path.resolve(WORKSPACE, p);
-  return abs === HOME || abs.startsWith(HOME + path.sep) || abs.startsWith('/tmp/');
-}
+function isInsideHome(p) { return coreIsInsideHome(HOME, WORKSPACE, p, path); }
 
 async function canUseTool(toolName, input) {
   let question = null;
@@ -722,25 +655,7 @@ async function runAgent() {
 
 // ---------- protocolo WS ----------
 
-// fast lane: perguntas triviais respondidas pelo próprio servidor — 0ms, 0 cota
-function fastLaneReply(text) {
-  const t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[?!.,]+/g, '').trim();
-  const trat = personality.tratamento || '';
-  const now = new Date();
-  if (/^(que horas sao|me diz as horas|horas agora|que horas)$/.test(t))
-    return `${now.getHours()} e ${now.getMinutes() === 0 ? 'em ponto' : now.getMinutes()}, ${trat || 'agora'}.`.replace(/^(\d+)/, 'São $1 horas');
-  if (/^(que dia e hoje|data de hoje|que data e hoje)$/.test(t))
-    return `Hoje é ${now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}.`;
-  if (/^(oi|ola|e ai|opa|bom dia|boa tarde|boa noite)$/.test(t)) {
-    const h = now.getHours();
-    const sauda = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
-    return `${sauda}, ${trat || 'às ordens'}. Em que posso ajudar?`;
-  }
-  if (/^(obrigado|obrigada|valeu|show|perfeito|otimo)$/.test(t))
-    return `Às ordens${trat ? ', ' + trat : ''}.`;
-  return null;
-}
+function fastLaneReply(text) { return coreFastLaneReply(text, personality.tratamento); }
 
 async function processUserText(text) {
   // barge-in: novo pedido durante um turno → interrompe o anterior
