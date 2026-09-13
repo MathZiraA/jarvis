@@ -322,7 +322,7 @@
           <label>Preset</label>
           <div class="presets" id="presets">
             <button class="preset" data-preset="jarvis">JARVIS</button>
-            <button class="preset" data-preset="friday">FRIDAY</button>
+            <button class="preset" data-preset="friday">SEXTA-FEIRA</button>
             <button class="preset" data-preset="ultron">ULTRON</button>
             <button class="preset" data-preset="neutro">Neutro</button>
           </div>
@@ -435,7 +435,7 @@ let persCfg = { preset: 'jarvis', nome: 'Jarvis', tratamento: 'senhor',
 // defaults locais dos presets (espelho do servidor) para resposta instantânea da UI
 const PRESET_DEFAULTS = {
   jarvis: { nome: 'Jarvis', tratamento: 'senhor', voz: 'eleven:nPczCjzI2devNBz1zQrb', humor: .6, sarcasmo: .3, formalidade: .7, prolixidade: .3 },
-  friday: { nome: 'Friday', tratamento: 'chefe', voz: 'pt-BR-FranciscaNeural', humor: .7, sarcasmo: .4, formalidade: .2, prolixidade: .3 },
+  friday: { nome: 'Sexta-feira', tratamento: 'chefe', voz: 'eleven:Xb7hH8MSUJpSbSDYk0k2', humor: .7, sarcasmo: .4, formalidade: .2, prolixidade: .3 },
   ultron: { nome: 'Ultron', tratamento: 'humano', voz: 'pt-BR-AntonioNeural', humor: .5, sarcasmo: .9, formalidade: .5, prolixidade: .4 },
   neutro: { nome: 'Jarvis', tratamento: '', voz: 'pt-BR-AntonioNeural', humor: .1, sarcasmo: 0, formalidade: .5, prolixidade: .2 },
 };
@@ -445,13 +445,44 @@ let sonsOn = (localStorage.getItem('jarvis_sons') ?? '1') === '1';
 const WAKE_VARIANTS = {
   jarvis: ['jarvis', 'djarvis', 'jarves', 'jarbis', 'járvis', 'jarvys'],
   friday: ['friday', 'fraidei', 'fraide', 'frida', 'fridei'],
+  'sexta-feira': ['sexta-feira', 'sexta feira', 'sextafeira'],
   ultron: ['ultron', 'últron', 'utron', 'ultrom'],
 };
 let WAKE = buildWake('Jarvis');
+let WAKE_LIST = ['jarvis'];
 function buildWake(nome) {
   const n = (nome || 'Jarvis').toLowerCase();
-  const vs = WAKE_VARIANTS[n] || [n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')];
-  return new RegExp(`\\b(${vs.join('|')})\\b`, 'i');
+  const vs = WAKE_VARIANTS[n] || [n];
+  WAKE_LIST = vs;
+  return new RegExp(`\\b(${vs.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'i');
+}
+
+// tolerância a erro de transcrição: aceita a wake word com 1 letra errada
+function stripAcc(s) { return s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+function within1(a, b) {
+  if (a === b) return true;
+  const la = a.length, lb = b.length;
+  if (Math.abs(la - lb) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < la && j < lb) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (la > lb) i++; else if (lb > la) j++; else { i++; j++; }
+  }
+  return edits + (la - i) + (lb - j) <= 1;
+}
+function fuzzyWake(text) {
+  const targets = WAKE_LIST.filter((v) => !v.includes(' ') && v.length >= 5).map(stripAcc);
+  if (!targets.length) return null;
+  const re = /[\p{L}\p{N}-]+/gu;
+  let w;
+  while ((w = re.exec(text)) !== null) {
+    const word = stripAcc(w[0].toLowerCase());
+    if (word.length >= 4 && targets.some((t) => within1(word, t))) {
+      return { index: w.index, 0: w[0] };
+    }
+  }
+  return null;
 }
 const CONV_MS = 90000;  // janela de conversa: classificador decide sem wake word
 const HOT_MS = 10000;   // logo após a resposta: aceita direto, sem classificar
@@ -486,15 +517,20 @@ function blip() {
 }
 
 // decide o destino de cada frase final transcrita
-function handleFinal(text) {
-  const m = text.match(WAKE);
+function handleFinal(text, alts = []) {
+  // procura a wake word no texto principal, nas transcrições alternativas do
+  // reconhecedor e, por fim, com tolerância de 1 letra errada
+  let src = text;
+  let m = text.match(WAKE);
+  if (!m) for (const a of alts) { const ma = a.match(WAKE); if (ma) { m = ma; src = a; break; } }
+  if (!m) m = fuzzyWake(text);
   // enquanto o Jarvis fala, só wake word interessa (proteção contra eco residual)
   if (!m && audioPlaying()) return;
   if (m) {
     // texto antes da wake word na mesma frase é contexto real (ex.: "eu tava pensando
     // em X, Jarvis, faz Y") — não descarta, manda junto em vez de jogar fora
-    const before = text.slice(0, m.index).replace(/[\s,.!?…]+$/, '').trim();
-    const after = text.slice(m.index + m[0].length).replace(/^[\s,.!?…]+/, '').trim();
+    const before = src.slice(0, m.index).replace(/[\s,.!?…]+$/, '').trim();
+    const after = src.slice(m.index + m[0].length).replace(/^[\s,.!?…]+/, '').trim();
     const full = [before, after].filter(Boolean).join(', ').trim();
     blip();
     // comandos de corte: não viram turno do agente, cancelam na hora
@@ -777,16 +813,21 @@ function initRecognition() {
       addMsg('jarvis', 'Sistema', `Reconhecimento falhou: ${e.error}`);
     }
   };
+  r.maxAlternatives = 5; // várias hipóteses de transcrição — a wake word é buscada em todas
   r.onresult = (e) => {
     let interim = '', final = '';
+    const alts = [];
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) final += t; else interim += t;
+      const res = e.results[i];
+      if (res.isFinal) {
+        final += res[0].transcript;
+        for (let j = 1; j < res.length; j++) if (res[j]?.transcript) alts.push(res[j].transcript);
+      } else interim += res[0].transcript;
     }
     $('interim').textContent = interim;
     if (final.trim()) {
       $('interim').textContent = '';
-      handleFinal(final.trim());
+      handleFinal(final.trim(), alts);
     }
   };
   return r;

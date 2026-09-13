@@ -52,7 +52,7 @@ const PRESETS = {
   friday: {
     flavor: 'Personalidade: como a FRIDAY do Homem de Ferro — informal, direta, energética, ' +
       'parceira de trabalho descolada. Sem cerimônia.',
-    voz: 'pt-BR-FranciscaNeural', tratamento: 'chefe',
+    voz: 'eleven:Xb7hH8MSUJpSbSDYk0k2', tratamento: 'chefe',
     saudacao: 'E aí, chefe. Pode falar.',
     humor: 0.7, sarcasmo: 0.4, formalidade: 0.2, prolixidade: 0.3,
   },
