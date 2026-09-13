@@ -4,6 +4,29 @@ Assistente estilo Jarvis: fala em pt-BR pelo microfone, o Claude Agent SDK execu
 volta falada (Edge TTS, voz Antônio). Plano completo e decisões: `design/JARVIS-PROJETO.md`
 (handoff original) — **as decisões revisadas em 12/09/2026 valem sobre ele** (ver abaixo).
 
+## Instalação
+
+Requisitos: Linux com systemd (usuário), GNOME de preferência (os atalhos de janela/dock
+assumem isso, mas o servidor em si funciona em qualquer Linux), Node.js 20+, Google Chrome ou
+Edge (a interface usa a Web Speech API do navegador, que não existe no Firefox), e uma conta
+Claude com acesso ao Agent SDK.
+
+```bash
+git clone https://github.com/MathZiraA/jarvis.git ~/jarvis
+cd ~/jarvis
+bin/install.sh
+```
+
+O `install.sh` instala as dependências, cria `.env` e `config/personality.json` a partir dos
+`.example`, e registra o serviço systemd e os atalhos de desktop — sem sobrescrever nada que já
+exista. Ao final ele mostra os 3 passos que faltam (gerar o token do Claude, ligar o serviço,
+abrir a janela). Cada um usa sua própria conta/token do zero — nada deste repositório depende de
+dados de quem o escreveu.
+
+Conectores opcionais (Gmail/Calendar/Drive, Notion) são configurados por fora, direto no
+`~/.claude.json` do Claude Code — veja a seção "Conectores" abaixo para o passo a passo de cada
+um (ou rode `bin/add-notion.sh` para o Notion).
+
 ## Estado (12/09/2026)
 
 - **Fase 1 (MVP) implementada**: servidor + HUD prontos, TTS por frases com fila gapless,
@@ -38,9 +61,10 @@ volta falada (Edge TTS, voz Antônio). Plano completo e decisões: `design/JARVI
   recria o query com `resume` na troca (sessão preservada). Memória de longo prazo em
   `data/memoria.md` ("lembra que…"), injetada na persona a cada recriação do agente.
 - Conectores: servidor `workspace-mcp` (taylorwilsdon) em `~/.claude.json` (escopo user), modo
-  single-user, `--tools gmail calendar --tool-tier core`. OAuth client próprio (projeto "jarvis"
-  no Google Cloud, app em teste, Matheus como test user); client id/secret em `~/jarvis/.env`;
-  token em `~/.google_workspace_mcp/credentials/`. Enviar e-mail exige confirmação verbal
+  single-user, `--tools gmail calendar --tool-tier core`. Precisa de um OAuth client próprio
+  (crie um projeto no Google Cloud Console, tipo de app "Desktop", com a sua própria conta como
+  test user) — client id/secret vão no seu `~/jarvis/.env`, nunca no repositório; token fica em
+  `~/.google_workspace_mcp/credentials/`. Enviar e-mail exige confirmação verbal
   (regex SENSITIVE_TOOL no server.js); leitura passa direto. Links de autorização OAuth do
   workspace-mcp expiram em 10 min.
 - Fase 2: standby contínuo descarta tudo sem "Jarvis" no frontend; comando na mesma frase
@@ -70,11 +94,24 @@ volta falada (Edge TTS, voz Antônio). Plano completo e decisões: `design/JARVI
   extraídas para lib/core.mjs e public/wake.js. A suíte já pegou um furo real: SENSITIVE_TOOL
   usava \b que não casa após "_" — envio de e-mail não estava sendo gateado.
 - **Drive** ✓ funcionando (re-autorização Google concluída em 13/09).
-- **Notion** ✓ funcionando (servidor oficial como `notionApi` em ~/.claude.json; o
-  bin/add-notion.sh ficou obsoleto — configurado por fora).
+- **Notion** ✓ funcionando (servidor oficial como `notionApi` em ~/.claude.json;
+  `bin/add-notion.sh` automatiza esse passo — pede o token e configura tudo).
 - **Pendentes (dependem de conta/vontade)**: wake word offline Porcupine (precisa AccessKey
   grátis do console Picovoice; a stack atual com alternativas+fuzzy cobre bem), WhatsApp
   (servidores MCP da comunidade ainda instáveis; reavaliar).
+
+## Conectores
+
+Nenhum é obrigatório — o Jarvis funciona sem eles, só perde essas capacidades específicas.
+
+- **Gmail/Calendar/Drive**: crie um projeto no [Google Cloud Console](https://console.cloud.google.com),
+  ative as APIs necessárias, crie credenciais OAuth tipo "Desktop app", e coloque o client
+  id/secret no seu `.env` (`GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET`). O servidor
+  MCP (`workspace-mcp`) já está registrado pelo `install.sh`; na primeira chamada de uma
+  ferramenta do Google, o Jarvis te manda um link de autorização.
+- **Notion**: crie uma integração interna em notion.so/my-integrations, copie o token, e rode
+  `bin/add-notion.sh` — ele pede o token e registra tudo. Depois compartilhe as páginas
+  desejadas com a integração (menu ••• → Conexões).
 
 ## Operação
 
