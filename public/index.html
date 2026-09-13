@@ -484,7 +484,11 @@ function handleFinal(text) {
   // enquanto o Jarvis fala, só wake word interessa (proteção contra eco residual)
   if (!m && audioPlaying()) return;
   if (m) {
+    // texto antes da wake word na mesma frase é contexto real (ex.: "eu tava pensando
+    // em X, Jarvis, faz Y") — não descarta, manda junto em vez de jogar fora
+    const before = text.slice(0, m.index).replace(/[\s,.!?…]+$/, '').trim();
     const after = text.slice(m.index + m[0].length).replace(/^[\s,.!?…]+/, '').trim();
+    const full = [before, after].filter(Boolean).join(', ').trim();
     blip();
     // comandos de corte: não viram turno do agente, cancelam na hora
     if (/^(cancela|para|pare|espera|sil[êe]ncio|cala|esquece|deixa)\b/i.test(after)) {
@@ -493,7 +497,7 @@ function handleFinal(text) {
       wake(); setState('listening');
       return;
     }
-    if (after.length >= 2) submitText(after);
+    if (full.length >= 2) submitText(full);
     else { stopAllAudio(); if (state === 'thinking' || audioPlaying()) send({ type: 'cancel' }); wake(); }
   } else if (state === 'confirming' || Date.now() < hotUntil) {
     submitText(text);                // emenda logo após a resposta (ou confirmação): direto
