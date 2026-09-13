@@ -337,6 +337,7 @@ let ttsQueue = [];            // frases pendentes do turno atual
 let ttsRunning = false;
 let seq = 0;
 let turnMetrics = null;
+let expectingInterruptResult = false; // true logo após um cancel: o próximo "result" com erro é esperado, não é falha real
 
 function speakSentence(sentence) {
   ttsQueue.push({ sentence, turn });
@@ -573,8 +574,10 @@ async function runAgent() {
           agentBusy = false;
           const ms = turnMetrics ? Date.now() - turnMetrics.start : null;
           const failed = m.subtype !== 'success' || m.is_error;
+          const wasInterrupted = failed && expectingInterruptResult;
+          expectingInterruptResult = false;
           broadcast({ type: 'turn_end', turn, ms, ok: !failed });
-          if (failed) {
+          if (failed && !wasInterrupted) {
             const resultText = String(m.result || '');
             let errText = 'A tarefa terminou com um problema.';
             if (/not logged in|\/login/i.test(resultText)) {
@@ -587,6 +590,8 @@ async function runAgent() {
             console.error('turno falhou:', m.subtype, resultText.slice(0, 200));
             broadcast({ type: 'error', text: errText });
             speakOutOfBand(errText);
+          } else if (wasInterrupted) {
+            console.log('turno interrompido pelo usuário (esperado, sem erro falado)');
           }
           broadcast({ type: 'status', state: 'idle' });
         }
@@ -666,6 +671,7 @@ wss.on('connection', (ws) => {
       if (addressed) await processUserText(text);
       else broadcast({ type: 'ignored', text });
     } else if (msg.type === 'cancel') {
+      expectingInterruptResult = true;
       try { await q?.interrupt(); } catch {}
       cancelSpeech();
       if (pendingConfirm) pendingConfirm.resolve(false);
