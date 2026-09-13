@@ -231,11 +231,32 @@ async function synthesizeEleven(text, voiceId) {
 
 const EDGE_FALLBACK_VOICE = 'en-AU-WilliamMultilingualNeural';
 
+// disjuntor da ElevenLabs: erro de chave desativa até reiniciar (Infinity),
+// falta de crédito desativa por 10 min — sem pagar uma tentativa falha por frase
+let elevenDisabledUntil = 0;
+let elevenWarned = false;
+
 async function synthesize(text) {
   const eleven = (currentVoice || '').match(/^eleven:([A-Za-z0-9]+)$/);
-  if (eleven && process.env.ELEVENLABS_API_KEY) {
+  if (eleven && process.env.ELEVENLABS_API_KEY && Date.now() > elevenDisabledUntil) {
     try { return await synthesizeEleven(text, eleven[1]); }
-    catch (e) { console.error('ElevenLabs falhou, usando Edge:', e.message); }
+    catch (e) {
+      const msg = String(e.message || '');
+      if (/invalid_api_key|authentication_error|401/i.test(msg)) {
+        elevenDisabledUntil = Infinity;
+        if (!elevenWarned) {
+          elevenWarned = true;
+          setTimeout(() => speakOutOfBand('A chave da ElevenLabs é inválida, senhor. Sigo com a voz reserva até ela ser corrigida.'), 10);
+        }
+      } else if (/quota|credit|429/i.test(msg)) {
+        elevenDisabledUntil = Date.now() + 10 * 60 * 1000;
+        if (!elevenWarned) {
+          elevenWarned = true;
+          setTimeout(() => speakOutOfBand('Os créditos da ElevenLabs acabaram por agora, senhor. Voz reserva ativada.'), 10);
+        }
+      }
+      console.error('ElevenLabs falhou, usando Edge:', msg);
+    }
   }
   const tts = new MsEdgeTTS();
   await tts.setMetadata(eleven ? EDGE_FALLBACK_VOICE : currentVoice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
@@ -277,6 +298,16 @@ const clients = new Set();
 function broadcast(obj) {
   const s = JSON.stringify(obj);
   for (const ws of clients) if (ws.readyState === 1) ws.send(s);
+}
+
+// áudio vai para UMA janela só (a última que interagiu) — duas janelas abertas
+// nunca mais tocam a mesma fala em dobro
+let audioWs = null;
+function sendAudio(obj) {
+  const target = (audioWs && audioWs.readyState === 1)
+    ? audioWs
+    : [...clients].find((c) => c.readyState === 1);
+  if (target) { audioWs = target; target.send(JSON.stringify(obj)); }
 }
 
 // ---------- travas de segurança (confirmação verbal) ----------
@@ -373,6 +404,8 @@ const avisarTool = tool(
 );
 const jarvisTools = createSdkMcpServer({ name: 'jarvis', version: '1.0.0', tools: [avisarTool] });
 
+let audioSentTurn = -1; // último turno que já mandou áudio (evita voz dupla no fallback)
+
 async function runTtsLoop() {
   if (ttsRunning) return;
   ttsRunning = true;
@@ -386,13 +419,19 @@ async function runTtsLoop() {
     }
     if (item.turn !== turn) continue;
     if (audio) {
+      audioSentTurn = item.turn;
       if (turnMetrics && !turnMetrics.firstAudio) {
         turnMetrics.firstAudio = Date.now();
         broadcast({ type: 'metrics', firstAudioMs: turnMetrics.firstAudio - turnMetrics.start });
       }
-      broadcast({ type: 'audio_chunk', seq: seq++, turn: item.turn, data: audio.toString('base64'), mime: 'audio/mpeg' });
+      sendAudio({ type: 'audio_chunk', seq: seq++, turn: item.turn, data: audio.toString('base64'), mime: 'audio/mpeg' });
+    } else if (audioSentTurn !== item.turn) {
+      // turno inteiro sem áudio até aqui: a voz do navegador é melhor que o silêncio
+      sendAudio({ type: 'tts_fallback', turn: item.turn, text: item.sentence });
     } else {
-      broadcast({ type: 'tts_fallback', turn: item.turn, text: item.sentence });
+      // já tem voz de verdade tocando neste turno: pular a frase falha é melhor
+      // do que a voz do navegador falar por cima (o texto está na tela)
+      console.error('frase pulada (TTS falhou no meio do turno):', item.sentence.slice(0, 60));
     }
   }
   ttsRunning = false;
@@ -440,6 +479,7 @@ function startClassifier() {
               'responda SIM. Responda APENAS a palavra SIM ou NÃO, nada mais.',
             tools: [],
             settingSources: [],
+            thinkingConfig: { type: 'disabled' },
             maxTurns: 10000,
           },
         });
@@ -537,6 +577,7 @@ async function runAgent() {
           model: MODEL,
           cwd: WORKSPACE,
           includePartialMessages: true,
+          thinkingConfig: { type: 'disabled' }, // voz precisa de 1º token rápido
           systemPrompt: { type: 'preset', preset: 'claude_code', append: buildPersona(personality) },
           permissionMode: 'default',
           canUseTool,
@@ -660,6 +701,7 @@ wss.on('connection', (ws) => {
   ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
+    audioWs = ws; // a janela que interage é a que fala
 
     if (msg.type === 'user_text' && msg.text?.trim()) {
       const text = msg.text.trim();
@@ -701,6 +743,7 @@ wss.on('connection', (ws) => {
           ? c.velocidade : (personality.velocidade || 1),
       };
       const voiceChanged = next.voz !== personality.voz;
+      if (voiceChanged) { elevenDisabledUntil = 0; elevenWarned = false; } // dá nova chance à ElevenLabs
       const greet = msg.announce ? (PRESETS[next.preset].saudacao || 'Configuração aplicada.') : null;
       personality = next;
       currentVoice = next.voz;
