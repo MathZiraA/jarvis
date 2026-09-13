@@ -59,3 +59,7 @@ volta falada (Edge TTS, voz Antônio). Plano completo e decisões: `design/JARVI
 - Janela: `bin/jarvis-window.sh` (ou ícone JARVIS no GNOME); autostart em
   `~/.config/autostart/jarvis-window.desktop`.
 - Workspace do agente: `~/Documentos` · porta 3111, só localhost.
+
+## Diário de evolução
+
+13/09/2026 — primeira auto-modificação, executada por mim mesmo
