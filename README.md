@@ -69,9 +69,9 @@ volta falada (Edge TTS, voz Antônio). Plano completo e decisões: `design/JARVI
 - **npm test**: 12 testes (chunker, sanitize, travas, fast lane, wake/fuzzy). Funções puras
   extraídas para lib/core.mjs e public/wake.js. A suíte já pegou um furo real: SENSITIVE_TOOL
   usava \b que não casa após "_" — envio de e-mail não estava sendo gateado.
-- **Drive** habilitado no workspace-mcp (primeiro uso pedirá re-autorização Google com o
-  escopo novo — o Jarvis mostra o link).
-- **Notion**: rodar `bin/add-notion.sh` com um token de integração interna.
+- **Drive** ✓ funcionando (re-autorização Google concluída em 13/09).
+- **Notion** ✓ funcionando (servidor oficial como `notionApi` em ~/.claude.json; o
+  bin/add-notion.sh ficou obsoleto — configurado por fora).
 - **Pendentes (dependem de conta/vontade)**: wake word offline Porcupine (precisa AccessKey
   grátis do console Picovoice; a stack atual com alternativas+fuzzy cobre bem), WhatsApp
   (servidores MCP da comunidade ainda instáveis; reavaliar).
