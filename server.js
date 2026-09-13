@@ -214,7 +214,7 @@ async function synthesizeEleven(text, voiceId) {
   const key = process.env.ELEVENLABS_API_KEY;
   const speed = Math.min(1.2, Math.max(0.7, personality.velocidade || 1));
   const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_24000_96`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_64`,
     {
       method: 'POST',
       headers: { 'xi-api-key': key, 'content-type': 'application/json' },
