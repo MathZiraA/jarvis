@@ -563,7 +563,11 @@ function handleFinal(text, alts = []) {
     // em X, Jarvis, faz Y") — não descarta, manda junto em vez de jogar fora
     const before = src.slice(0, m.index).replace(/[\s,.!?…]+$/, '').trim();
     const after = src.slice(m.index + m[0].length).replace(/^[\s,.!?…]+/, '').trim();
-    const full = [before, after].filter(Boolean).join(', ').trim();
+    // se o nome veio numa frase separada (pausa longa cortou o reconhecimento), o pedaço
+    // anterior foi descartado como "sem nome" — resgata se for recente o bastante
+    const rescued = !before && preWake && Date.now() - preWakeAt < 6000 ? preWake : before;
+    preWake = ''; preWakeAt = 0;
+    const full = [rescued, after].filter(Boolean).join(', ').trim();
     blip();
     // comandos de corte: não viram turno do agente, cancelam na hora
     if (/^(cancela|para|pare|espera|sil[êe]ncio|cala|esquece|deixa)\b/i.test(after)) {
@@ -606,7 +610,9 @@ function handleFinal(text, alts = []) {
     $('interim').textContent = '🤔 analisando se era comigo…';
     send({ type: 'maybe_text', text });
   } else {
-    // fora da janela e sem wake word: descarta, com feedback discreto
+    // fora da janela e sem wake word: descarta da UI, mas guarda por alguns segundos —
+    // se o nome vier na frase seguinte, isso é resgatado como contexto (ver acima)
+    preWake = text; preWakeAt = Date.now();
     $('interim').textContent = `“${text.slice(0, 60)}” — ignorado (sem “${persCfg.nome}”)`;
     setTimeout(() => { if (!recActive || state === 'idle') $('interim').textContent = ''; }, 1800);
   }
@@ -903,6 +909,7 @@ function initRecognition() {
 // na hora, os finais entram num buffer que só vira comando após silêncio real —
 // retomou a fala, o pedaço novo é emendado ao anterior.
 let pendBuf = '', pendAlts = [], pendTimer = null;
+let preWake = '', preWakeAt = 0; // último trecho ignorado por falta do nome, resgatável
 function queueFinal(text, alts) {
   pendBuf = (pendBuf ? pendBuf + ' ' : '') + text;
   pendAlts.push(...alts);
