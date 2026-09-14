@@ -467,7 +467,10 @@ function startClassifier() {
               'a algo que o assistente disse. Indícios de que NÃO: vocativos de outras pessoas ' +
               '(nomes próprios que não são o assistente), "alô/oi amor/mãe", diálogo claramente ' +
               'humano, narração de TV/vídeo/YouTube, leitura em voz alta, reação a um vídeo ' +
-              '("caraca, olha isso"), fala consigo mesmo sem comando. NA DÚVIDA, RESPONDA NÃO — ' +
+              '("caraca, olha isso"), fala consigo mesmo sem comando, MENÇÃO a uma terceira pessoa ' +
+              'em vez de comando ("eu tava falando com minha mãe", "ele que pediu isso", "ela disse ' +
+              'que vem"), desabafo ou xingamento solto sem pedido embutido ("caralho", "que saco"), ' +
+              'resposta dirigida a alguém que não é o assistente. NA DÚVIDA, RESPONDA NÃO — ' +
               'o usuário sempre pode chamar pelo nome; aceitar conversa alheia interrompe e ' +
               'irrita muito mais do que pedir para repetir. ' +
               'Responda APENAS a palavra SIM ou NÃO, nada mais.',
